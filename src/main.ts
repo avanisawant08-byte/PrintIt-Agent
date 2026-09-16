@@ -58,9 +58,9 @@ class Application {
     const heartbeatService = HeartbeatService.getInstance();
     const pairingManager = PairingManager.getInstance();
 
-    // Ensure agent automatically starts with Windows in the background
+    // Ensure agent automatically starts with Windows in the background (packaged production only)
     try {
-      if (!app.isPackaged || !app.getLoginItemSettings().openAtLogin) {
+      if (app.isPackaged && !app.getLoginItemSettings().openAtLogin) {
         app.setLoginItemSettings({
           openAtLogin: true,
           openAsHidden: true
@@ -75,12 +75,14 @@ class Application {
       await realtimeManager.start();
       heartbeatService.start();
       
-      // Auto-enable launch on Windows startup
+      // Auto-enable launch on Windows startup (packaged production only)
       try {
-        app.setLoginItemSettings({
-          openAtLogin: true,
-          openAsHidden: true
-        });
+        if (app.isPackaged) {
+          app.setLoginItemSettings({
+            openAtLogin: true,
+            openAsHidden: true
+          });
+        }
       } catch {}
 
       console.log('[PrintIt Agent] Agent is running silently in the background.');

@@ -9,6 +9,7 @@ export interface PrintJob {
   pdf_url: string;
   checksum: string;
   copies: number;
+  printer_name?: string | null;
   status: PrintJobStatus;
   error_message?: string | null;
   retry_count: number;

@@ -257,9 +257,10 @@ export class RealtimeManager {
       );
       downloadedFilePath = downloadResult.filePath;
 
-      // 2. Determine target printer
+      // 2. Determine target printer (Order-specific printer or fallback to default agent printer)
       const config = this.configManager.get();
-      const printerName = config.selectedPrinter;
+      const printerName = job.printer_name || config.selectedPrinter;
+      console.log(`[RealtimeManager] Job ${job.id} routing to printer: "${printerName || 'SYSTEM DEFAULT'}" (Order specific: ${job.printer_name ? 'YES' : 'NO'})`);
 
       // 3. Print silently via SumatraPDF / Spooler
       await this.printerService.printPdf(downloadedFilePath, printerName, job.copies || 1);
