@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrintIt Agent — Control Center</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-box">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+            <rect x="6" y="14" width="12" height="8"></rect>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <h1>PrintIt Remote Agent</h1>
+          <span class="version-tag">v1.0.0 • Background Spooler</span>
+        </div>
+      </div>
+      <div class="status-pill online" id="agent-status-pill">
+        <span class="status-dot"></span>
+        <span id="agent-status-text">Online</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Station Information Grid -->
+      <section class="grid-cards">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">🏪</span>
+            <h3>Shop Connection</h3>
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="label">Shop Name:</span>
+              <span class="value" id="shop-name-val">Connecting...</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Shop ID:</span>
+              <span class="value mono" id="shop-id-val">Loading...</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Station:</span>
+              <span class="value highlight" id="station-name-val">Counter-Station-1</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">🛡️</span>
+            <h3>Privacy Shield (Default)</h3>
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="label">Local Cleanup:</span>
+              <span class="value badge-success">All Orders</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Job Isolation:</span>
+              <span class="value badge-success">Per-Job Folder</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Recovery Sweep:</span>
+              <span class="value">On Startup</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Printer Selection Card -->
+      <section class="card printer-card">
+        <div class="card-header flex-between">
+          <div class="header-left">
+            <span class="card-icon">🖨️</span>
+            <h3>Active Printer Routing</h3>
+          </div>
+          <button id="refresh-printers-btn" class="btn-secondary btn-sm" title="Refresh Windows printers">
+            🔄 Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <p class="desc-text">Select which physical or virtual printer this agent dispatches incoming shop print jobs to:</p>
+          <div class="printer-selector-row">
+            <select id="printer-select" class="printer-dropdown">
+              <option value="">Detecting printers...</option>
+            </select>
+            <button id="test-print-btn" class="btn-primary">
+              <span class="btn-icon">📄</span>
+              <span>Send Test Print</span>
+            </button>
+          </div>
+          <div id="test-print-feedback" class="feedback-msg"></div>
+        </div>
+      </section>
+
+      <!-- Recent Jobs Table -->
+      <section class="card jobs-card">
+        <div class="card-header flex-between">
+          <div class="header-left">
+            <span class="card-icon">📋</span>
+            <h3>Recent Processed Jobs</h3>
+          </div>
+          <span class="count-badge" id="jobs-count-badge">0 jobs</span>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-container">
+            <table class="jobs-table">
+              <thead>
+                <tr>
+                  <th>Job ID</th>
+                  <th>Status</th>
+                  <th>Security</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-table-body">
+                <tr class="empty-row">
+                  <td colspan="4">No print jobs processed yet on this station. Ready to receive orders!</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Quick Action Footers -->
+      <section class="action-footer">
+        <button id="open-temp-btn" class="btn-outline">
+          📁 Inspect Secure Temp Dir
+        </button>
+        <button id="repair-btn" class="btn-outline danger">
+          🔄 Re-pair / Switch Shop
+        </button>
+      </section>
+    </main>
+
+    <!-- Bottom Bar -->
+    <footer class="footer">
+      <span>💡 Tip: You can close or minimize this window. The agent stays active in your Windows Taskbar & System Tray.</span>
+    </footer>
+  </div>
+
+  <script>var exports = exports || {};</script>
+  <script src="dashboard_renderer.js"></script>
+</body>
+</html>

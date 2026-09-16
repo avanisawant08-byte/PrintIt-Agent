@@ -1,0 +1,270 @@
+import path from 'path';
+import fs from 'fs';
+import { app, Tray, Menu, MenuItemConstructorOptions, nativeImage, dialog, shell } from 'electron';
+import { ConfigManager } from './config';
+import { PrinterService } from './printer';
+import { DedupDatabase } from './dedup';
+import { PairingManager } from './pairing';
+import { HeartbeatService } from './heartbeat';
+import { DashboardManager } from './dashboard';
+
+export class TrayManager {
+  private static instance: TrayManager;
+  private tray: Tray | null = null;
+  private configManager: ConfigManager;
+  private printerService: PrinterService;
+  private dedupDb: DedupDatabase;
+  private heartbeatService: HeartbeatService;
+  private onSwitchShopCallback: (() => Promise<void>) | null = null;
+
+  private constructor() {
+    this.configManager = ConfigManager.getInstance();
+    this.printerService = PrinterService.getInstance();
+    this.dedupDb = DedupDatabase.getInstance();
+    this.heartbeatService = HeartbeatService.getInstance();
+  }
+
+  public static getInstance(): TrayManager {
+    if (!TrayManager.instance) {
+      TrayManager.instance = new TrayManager();
+    }
+    return TrayManager.instance;
+  }
+
+  public setOnSwitchShopCallback(callback: () => Promise<void>): void {
+    this.onSwitchShopCallback = callback;
+  }
+
+  public async init(): Promise<void> {
+    const icon = this.getTrayIcon();
+    this.tray = new Tray(icon);
+    this.tray.setToolTip('PrintIt Remote Agent');
+
+    await this.updateMenu();
+
+    const openPrimaryWindow = () => {
+      if (this.configManager.isPaired()) {
+        DashboardManager.getInstance().showDashboardWindow();
+      } else {
+        PairingManager.getInstance().showPairingWindow();
+      }
+    };
+
+    this.tray.on('double-click', openPrimaryWindow);
+    this.tray.on('click', openPrimaryWindow);
+  }
+
+  public async updateMenu(): Promise<void> {
+    if (!this.tray) return;
+
+    const config = this.configManager.get();
+    const isPaired = this.configManager.isPaired();
+
+    // 1. Fetch available Windows printers dynamically
+    const printers = await this.printerService.getAvailablePrinters();
+    const currentPrinter = config.selectedPrinter;
+
+    // If no printer selected yet, and printers exist, select default
+    if (!currentPrinter && printers.length > 0) {
+      const def = printers.find((p) => p.isDefault) || printers[0];
+      this.configManager.set({ selectedPrinter: def.name });
+    }
+
+    // 2. Build dynamic Printer Selection Submenu
+    const printerSubmenu: MenuItemConstructorOptions[] = printers.length > 0
+      ? printers.map((printer) => ({
+          label: `${printer.name}${printer.isDefault ? ' (Default)' : ''}`,
+          type: 'radio',
+          checked: currentPrinter ? printer.name === currentPrinter : Boolean(printer.isDefault),
+          click: () => {
+            console.log(`[TrayManager] Selected printer changed to: ${printer.name}`);
+            this.configManager.set({ selectedPrinter: printer.name });
+            this.updateMenu();
+          }
+        }))
+      : [{ label: 'No printers detected', enabled: false }];
+
+    // 3. Build Tray Menu Items
+    const template: MenuItemConstructorOptions[] = [
+      {
+        label: '🖥️ Open Control Panel',
+        click: () => {
+          if (isPaired) {
+            DashboardManager.getInstance().showDashboardWindow();
+          } else {
+            PairingManager.getInstance().showPairingWindow();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: isPaired ? `🟢 Online (Shop: ${config.shopId.slice(0, 8)}...)` : '⚪ Not Paired',
+        enabled: false
+      },
+      {
+        label: `Station: ${config.deviceName || 'Counter-Station'}`,
+        enabled: false
+      },
+      { type: 'separator' },
+      {
+        label: 'Select Printer',
+        submenu: printerSubmenu
+      },
+      {
+        label: 'Test Print Page',
+        enabled: printers.length > 0,
+        click: () => this.handleTestPrint()
+      },
+      {
+        label: 'View Recent Prints',
+        click: () => this.showRecentPrints()
+      },
+      { type: 'separator' },
+      {
+        label: isPaired ? '🏪 Switch Shop / Re-Pair' : '🔗 Pair Station (6-Digit Code)',
+        click: async () => {
+          if (isPaired) {
+            const { response } = await dialog.showMessageBox({
+              type: 'question',
+              buttons: ['Switch Shop', 'Cancel'],
+              defaultId: 0,
+              cancelId: 1,
+              title: 'Switch Shop',
+              message: 'Are you sure you want to disconnect this agent from the current shop and pair with another shop?'
+            });
+            if (response !== 0) return;
+          }
+
+          if (this.onSwitchShopCallback) {
+            await this.onSwitchShopCallback();
+          } else {
+            this.configManager.clearPairing();
+            await this.updateMenu();
+            PairingManager.getInstance().showPairingWindow();
+          }
+        }
+      },
+      {
+        label: 'Start with Windows',
+        type: 'checkbox',
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (item) => {
+          app.setLoginItemSettings({
+            openAtLogin: item.checked,
+            openAsHidden: true
+          });
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit Agent',
+        click: async () => {
+          await this.heartbeatService.stop();
+          app.quit();
+        }
+      }
+    ];
+
+    const contextMenu = Menu.buildFromTemplate(template);
+    this.tray.setContextMenu(contextMenu);
+  }
+
+  private async handleTestPrint(): Promise<void> {
+    const config = this.configManager.get();
+    const targetPrinter = config.selectedPrinter;
+
+    try {
+      // Create a temporary minimal test PDF or print a test line
+      const testPdfPath = path.join(app.getPath('temp'), 'printit-test-slip.pdf');
+      
+      // Simple 1-page minimal PDF binary buffer for immediate validation
+      const minimalPdf = Buffer.from(
+        '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 300 200]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000060 00000 n\n0000000118 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF'
+      );
+      fs.writeFileSync(testPdfPath, minimalPdf);
+
+      const result = await this.printerService.printPdf(testPdfPath, targetPrinter, 1);
+      
+      if (result && result.savedPath) {
+        shell.showItemInFolder(result.savedPath);
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'PrintIt Test Print (Virtual Mode)',
+          message: `Virtual test print generated successfully!\n\nFile saved to:\n${result.savedPath}\n\n(Revealed in File Explorer)`
+        });
+      } else {
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'PrintIt Test Print',
+          message: `Test print dispatched successfully to printer:\n${targetPrinter || 'Default Printer'}`
+        });
+      }
+    } catch (err: any) {
+      dialog.showErrorBox('Test Print Failed', err?.message || 'Could not print test document.');
+    }
+  }
+
+  private showRecentPrints(): void {
+    const recent = this.dedupDb.getRecentJobs(10);
+    if (recent.length === 0) {
+      dialog.showMessageBox({
+        type: 'info',
+        title: 'Recent Print Jobs',
+        message: 'No print jobs have been processed yet on this device.'
+      });
+      return;
+    }
+
+    const logText = recent
+      .map((r, i) => {
+        const time = new Date(r.printed_at).toLocaleTimeString();
+        return `${i + 1}. [${time}] Job ID: ${r.job_id.slice(0, 8)}... (${r.status})`;
+      })
+      .join('\n');
+
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Recent Print Jobs (SQLite)',
+      message: `Last ${recent.length} processed job(s):\n\n${logText}`
+    });
+  }
+
+  private getTrayIcon(): Electron.NativeImage {
+    const png32Path = path.join(__dirname, '..', 'assets', 'icon32.png');
+    const pngPath = path.join(__dirname, '..', 'assets', 'icon.png');
+    const icoPath = path.join(__dirname, '..', 'assets', 'icon.ico');
+
+    if (fs.existsSync(png32Path)) {
+      const img = nativeImage.createFromPath(png32Path);
+      if (!img.isEmpty()) {
+        console.log('[TrayManager] Loaded tray icon from icon32.png');
+        return img;
+      }
+    }
+
+    if (fs.existsSync(pngPath)) {
+      const img = nativeImage.createFromPath(pngPath);
+      if (!img.isEmpty()) {
+        console.log('[TrayManager] Loaded tray icon from icon.png');
+        return img;
+      }
+    }
+
+    if (fs.existsSync(icoPath)) {
+      const img = nativeImage.createFromPath(icoPath);
+      if (!img.isEmpty()) {
+        console.log('[TrayManager] Loaded tray icon from icon.ico');
+        return img;
+      }
+    }
+
+    // Fallback: create a 16x16 crisp programmatic tray icon if asset is not found
+    const canvas = nativeImage.createFromBuffer(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZElEQVR4nGNgGFjAiM84VjXEk2CqGf7//8+ATw8TF5sBXQz/B9Dlhv///+fEp4fHAC4GBnSMzYDYMAbZQD4hA6huwE0fQw24aYnSAYM9+f//f4ZRo0bRoBmgxAAo9g40BgA9m3fHlqZqogAAAABJRU5ErkJggg==',
+        'base64'
+      )
+    );
+    return canvas;
+  }
+}

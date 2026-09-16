@@ -1,0 +1,17 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Files uploaded for printing
+    match /printit/uploads/{allPaths=**} {
+      // Allow read only if user is authenticated or via Firebase download token / signed URL
+      allow read: if request.auth != null;
+      // Allow write if user is authenticated
+      allow write: if request.auth != null;
+    }
+
+    // Default deny for all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

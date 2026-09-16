@@ -1,0 +1,63 @@
+{
+  "name": "printit-remote-agent",
+  "version": "1.0.0",
+  "description": "PrintIt Remote Silent Print Agent for Windows Desktop",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.js",
+    "copy-assets": "node scripts/copy-assets.js",
+    "watch": "tsc -w",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "test": "node --test dist/__tests__/**/*.test.js",
+    "test:simulate": "npm run build && node scripts/simulate-print-flow.js"
+  },
+  "keywords": [
+    "printit",
+    "electron",
+    "silent-printing",
+    "sumatrapdf",
+    "supabase",
+    "realtime"
+  ],
+  "author": "PrintIt Team",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "axios": "^1.8.1",
+    "dotenv": "^16.4.7",
+    "pdf-to-printer": "^5.8.1",
+    "sql.js": "^1.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.8",
+    "@types/sql.js": "^1.4.9",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.8.2"
+  },
+  "build": {
+    "appId": "com.printit.agent",
+    "productName": "PrintIt Agent",
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "node_modules/sql.js/dist/sql-wasm.wasm"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+.env
+*.log
+*.sqlite
+*.db
+temp_downloads/
+.DS_Store
+Thumbs.db
+*serviceaccount*.json
+*serviceAccount*.json
+*.pem
+*.key
+.agent-data/
+.temp/
+output_prints/

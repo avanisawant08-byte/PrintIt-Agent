@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrintIt Agent — Pair Device</title>
+  <link rel="stylesheet" href="pairing.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logo-badge">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+      </div>
+      <h2>PrintIt Remote Agent</h2>
+      <p class="subtitle">Enter the 6-character pairing code from your PrintIt Shop Dashboard to link this printer.</p>
+    </div>
+
+    <form id="pairing-form" autocomplete="off">
+      <div class="code-inputs" id="code-container">
+        <input type="text" maxlength="1" class="code-box" autofocus />
+        <input type="text" maxlength="1" class="code-box" />
+        <input type="text" maxlength="1" class="code-box" />
+        <input type="text" maxlength="1" class="code-box" />
+        <input type="text" maxlength="1" class="code-box" />
+        <input type="text" maxlength="1" class="code-box" />
+      </div>
+
+      <div class="device-meta">
+        <label for="device-name">Station Name</label>
+        <input type="text" id="device-name" placeholder="e.g. Counter-POS-1" value="" />
+      </div>
+
+      <div id="status-message" class="status-message"></div>
+
+      <button type="submit" id="submit-btn" class="submit-btn">
+        <span class="btn-text">Connect & Pair Agent</span>
+        <span class="spinner hidden"></span>
+      </button>
+    </form>
+
+    <div class="footer-note">
+      This agent runs silently in the system tray and spools print orders automatically.
+    </div>
+  </div>
+
+  <script>var exports = exports || {};</script>
+  <script src="pairing_renderer.js"></script>
+</body>
+</html>
