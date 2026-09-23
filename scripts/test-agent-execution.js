@@ -41,6 +41,10 @@ async function testAgentExecution() {
   console.log('Stopping RealtimeManager...');
   await realtime.stop();
   console.log('--- TEST COMPLETE ---');
+  process.exit(0);
 }
 
-testAgentExecution().catch(console.error);
+testAgentExecution().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

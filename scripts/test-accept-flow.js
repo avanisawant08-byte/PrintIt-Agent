@@ -1,7 +1,6 @@
-const { Client } = require('c:/Users/avani/Downloads/print it/print it/backend/node_modules/pg');
 const axios = require('axios');
+const { getDbClient } = require('./db.js');
 
-const DB_URL = 'postgresql://postgres.ncasateooojzdxyxszfn:os4XLmnlViI14UBA@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true';
 const BACKEND_URL = 'http://localhost:3000';
 
 async function run() {
@@ -9,7 +8,7 @@ async function run() {
   console.log('TESTING "ACCEPT & DOWNLOAD" AUTOMATED WORKFLOW');
   console.log('='.repeat(70));
 
-  const client = new Client({ connectionString: DB_URL });
+  const client = getDbClient();
   await client.connect();
 
   // 1. Check Backend Server

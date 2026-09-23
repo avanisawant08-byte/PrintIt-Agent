@@ -26,6 +26,7 @@
     "@supabase/supabase-js": "^2.49.1",
     "axios": "^1.8.1",
     "dotenv": "^16.4.7",
+    "pdf-lib": "^1.17.1",
     "pdf-to-printer": "^5.8.1",
     "sql.js": "^1.14.2"
   },
@@ -44,20 +45,28 @@
         "nsis",
         "portable"
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "perMachine": false,
+      "allowElevation": false
     },
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
+      "!dist/**/*.map",
+      "!dist/__tests__/**/*",
       "assets/**/*",
       "node_modules/sql.js/dist/sql-wasm.wasm"
+    ],
+    "asarUnpack": [
+      "**/node_modules/pdf-to-printer/dist/**"
     ]
   }
 }

@@ -1,6 +1,19 @@
 export type PrintJobStatus = 'PENDING' | 'PRINTING' | 'COMPLETED' | 'FAILED';
 
-export type AgentDeviceStatus = 'ONLINE' | 'OFFLINE' | 'PRINTING';
+export type AgentDeviceStatus = 'ONLINE' | 'OFFLINE' | 'PRINTING' | 'READY';
+
+export interface PrintOptions {
+  size?: string;
+  color?: 'bw' | 'color' | string;
+  sides?: 'single' | 'double' | string;
+  copies?: number;
+  binding?: string;
+  orientation?: 'portrait' | 'landscape' | string;
+  pages_per_paper?: number;
+  repeat_image_on_grid?: boolean;
+  page_range?: string;
+  [key: string]: any;
+}
 
 export interface PrintJob {
   id: string;
@@ -10,6 +23,7 @@ export interface PrintJob {
   checksum: string;
   copies: number;
   printer_name?: string | null;
+  print_options?: PrintOptions | null;
   status: PrintJobStatus;
   error_message?: string | null;
   retry_count: number;
@@ -32,6 +46,8 @@ export interface AgentConfig {
   deviceName: string;
   authToken: string;
   selectedPrinter?: string;
+  selectedPrinterBw?: string;
+  selectedPrinterColor?: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
   backendApiUrl?: string;

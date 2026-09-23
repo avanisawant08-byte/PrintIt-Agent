@@ -160,7 +160,7 @@ export class SupabaseService {
    */
   public async updateDeviceHeartbeat(
     deviceId: string,
-    status: 'ONLINE' | 'OFFLINE' | 'PRINTING',
+    status: 'ONLINE' | 'OFFLINE' | 'PRINTING' | 'READY',
     selectedPrinter?: string,
     agentVersion: string = '1.0.0',
     availablePrinters?: any[]
@@ -169,8 +169,10 @@ export class SupabaseService {
     if (!client || !deviceId) return false;
 
     try {
+      // Agent maintains internal READY state; map to ONLINE if PostgreSQL enum is ('ONLINE', 'OFFLINE', 'PRINTING')
+      const dbStatus = (status === 'READY') ? 'ONLINE' : status;
       const payload: any = {
-        status,
+        status: dbStatus,
         selected_printer: selectedPrinter || null,
         agent_version: agentVersion,
         last_seen_at: new Date().toISOString()
@@ -194,6 +196,45 @@ export class SupabaseService {
     } catch (err) {
       console.error('[SupabaseService] Heartbeat exception:', err);
       return false;
+    }
+  }
+
+  /**
+   * Fallback helper to fetch file print options directly from the orders table
+   */
+  public async getOrderPrintOptions(orderId: string, pdfUrl?: string): Promise<any | null> {
+    const client = this.getClient();
+    if (!client || !orderId) return null;
+
+    try {
+      const { data, error } = await client
+        .from('orders')
+        .select('files, print_options')
+        .eq('order_id', orderId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+
+      if (data.files && Array.isArray(data.files)) {
+        if (pdfUrl) {
+          const cleanUrl = pdfUrl.split('?')[0];
+          for (const f of data.files) {
+            const fUrl = f.file_info?.s3_key || f.s3_key || f.url || '';
+            if (fUrl && cleanUrl === fUrl.split('?')[0]) {
+              if (f.print_options) return f.print_options;
+            }
+          }
+        }
+        // If single file or no specific match, use first file's print options
+        if (data.files.length > 0 && data.files[0]?.print_options) {
+          return data.files[0].print_options;
+        }
+      }
+
+      return data.print_options || null;
+    } catch (err) {
+      console.warn('[SupabaseService] Could not fetch fallback order print_options:', err);
+      return null;
     }
   }
 }

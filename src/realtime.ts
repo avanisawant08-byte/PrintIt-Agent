@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { SupabaseService } from './supabase';
 import { ConfigManager } from './config';
@@ -5,14 +7,20 @@ import { DedupDatabase } from './dedup';
 import { PdfDownloader } from './downloader';
 import { PrinterService } from './printer';
 import { HeartbeatService } from './heartbeat';
+import { LayoutProcessor } from './layoutProcessor';
+import { SecureTempManager } from './secureTempManager';
 import { PrintJob } from './types';
+import { logger } from './logger';
 
 export class RealtimeManager {
   private static instance: RealtimeManager;
   private channel: RealtimeChannel | null = null;
   private queue: PrintJob[] = [];
   private isProcessing = false;
+  private currentlyProcessingJobId: string | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
+  private isRunning = false;
+  private currentPollIntervalMs = 10000;
 
   private supabaseService: SupabaseService;
   private configManager: ConfigManager;
@@ -55,6 +63,7 @@ export class RealtimeManager {
 
     // Unsubscribe from any previous channel
     await this.stop();
+    this.isRunning = true;
 
     const channelName = `shop-print-jobs-${config.shopId}`;
     console.log(`[RealtimeManager] Subscribing to Supabase Realtime channel: ${channelName}`);
@@ -118,22 +127,41 @@ export class RealtimeManager {
       )
       .subscribe(async (status) => {
         console.log(`[RealtimeManager] Realtime subscription status: ${status}`);
+        if (!this.isRunning) return;
+
         if (status === 'SUBSCRIBED') {
           // Reconnect / initial catch-up
           await this.catchUpPendingJobs();
+          // WebSocket is live: relax database polling to every 30 seconds
+          this.setPollingInterval(30000);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // WebSocket disconnected: accelerate fallback poll to 10 seconds
+          this.setPollingInterval(10000);
         }
       });
 
-    // Start robust periodic poll fallback (every 5 seconds) in case of WebSocket delays
+    // Start initial fallback poll timer (10s) until SUBSCRIBED event confirms WebSocket
+    this.setPollingInterval(10000);
+  }
+
+  private setPollingInterval(intervalMs: number): void {
+    if (!this.isRunning) return;
+    if (this.pollTimer && this.currentPollIntervalMs === intervalMs) {
+      return;
+    }
+    this.currentPollIntervalMs = intervalMs;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
     this.pollTimer = setInterval(() => {
       this.catchUpPendingJobs().catch(() => {});
-    }, 5000);
+    }, intervalMs);
+    console.log(`[RealtimeManager] Active polling fallback interval adjusted to ${intervalMs / 1000}s`);
   }
 
   public async stop(): Promise<void> {
+    this.isRunning = false;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
@@ -186,6 +214,10 @@ export class RealtimeManager {
     console.log(`[RealtimeManager] Found ${pendingJobs.length} pending job(s) in database`);
 
     for (const job of pendingJobs) {
+      if (this.dedupDb.isJobProcessed(job.id)) {
+        console.log(`[RealtimeManager] [STARTUP CATCH-UP] Job ${job.id} was already processed/completed. Suppressing duplicate print.`);
+        continue;
+      }
       this.enqueueJob(job);
     }
   }
@@ -206,7 +238,12 @@ export class RealtimeManager {
       return;
     }
 
-    // Check if already in current queue
+    // Check if actively executing or already in current queue
+    if (this.currentlyProcessingJobId === job.id) {
+      console.log(`[RealtimeManager] Job ${job.id} is currently executing in-flight. Skipping duplicate enqueue.`);
+      return;
+    }
+
     if (this.queue.some((j) => j.id === job.id)) {
       console.log(`[RealtimeManager] Job ${job.id} is already in the in-memory processing queue.`);
       return;
@@ -232,11 +269,29 @@ export class RealtimeManager {
   }
 
   private async executePrintJob(job: PrintJob): Promise<void> {
-    console.log(`[RealtimeManager] Starting execution of job ${job.id} (Order: ${job.order_id})`);
+    logger.info('RealtimeManager', `Starting execution of job ${job.id} (Order: ${job.order_id})`);
+    this.currentlyProcessingJobId = job.id;
+
+    const config = this.configManager.get();
+
+    // Security & Authorization Guard: Validate job ownership and integrity
+    if (!job.shop_id || job.shop_id !== config.shopId) {
+      const authErr = `Authorization Failed: Job ${job.id} does not belong to paired shop ${config.shopId}`;
+      logger.error('RealtimeManager', authErr);
+      await this.supabaseService.updateJobStatus(job.id, 'FAILED', authErr);
+      return;
+    }
+
+    if (!job.id || !job.order_id || !job.pdf_url) {
+      const malformedErr = `Malformed Job: Missing essential fields in job ${job.id}`;
+      logger.error('RealtimeManager', malformedErr);
+      await this.supabaseService.updateJobStatus(job.id, 'FAILED', malformedErr);
+      return;
+    }
 
     // Verify dedup once more before spooling
     if (this.dedupDb.isJobProcessed(job.id)) {
-      console.log(`[RealtimeManager] Job ${job.id} was processed earlier. Aborting execution.`);
+      logger.info('RealtimeManager', `Job ${job.id} was processed earlier per local SQLite. Aborting execution.`);
       await this.supabaseService.updateJobStatus(job.id, 'COMPLETED');
       return;
     }
@@ -246,9 +301,10 @@ export class RealtimeManager {
     this.heartbeatService.setStatus('PRINTING');
 
     let downloadedFilePath: string | null = null;
+    let transformedFilePath: string | null = null;
 
     try {
-      // 1. Download PDF stream directly to isolated per-job directory & verify checksum
+      // 1. Download file stream directly to isolated per-job directory & verify checksum
       const downloadResult = await this.downloader.downloadAndVerify(
         job.id,
         job.pdf_url,
@@ -257,24 +313,58 @@ export class RealtimeManager {
       );
       downloadedFilePath = downloadResult.filePath;
 
-      // 2. Determine target printer (Order-specific printer or fallback to default agent printer)
-      const config = this.configManager.get();
-      const printerName = job.printer_name || config.selectedPrinter;
-      console.log(`[RealtimeManager] Job ${job.id} routing to printer: "${printerName || 'SYSTEM DEFAULT'}" (Order specific: ${job.printer_name ? 'YES' : 'NO'})`);
+      // 2. Resolve Print Options (use job.print_options or fallback to querying orders table)
+      let effectiveOptions = job.print_options;
+      if (!effectiveOptions || Object.keys(effectiveOptions).length === 0) {
+        try {
+          const fallbackOpts = await this.supabaseService.getOrderPrintOptions(job.order_id, job.pdf_url);
+          if (fallbackOpts) {
+            effectiveOptions = { ...fallbackOpts, ...(effectiveOptions || {}) };
+          }
+        } catch (e) {
+          logger.warn('RealtimeManager', `Could not query fallback print options for job ${job.id}: ${e}`);
+        }
+      }
 
-      // 3. Print silently via SumatraPDF / Spooler
-      await this.printerService.printPdf(downloadedFilePath, printerName, job.copies || 1);
+      logger.info(
+        'RealtimeManager',
+        `Job ${job.id} effective print options: ${JSON.stringify(effectiveOptions || {})}`
+      );
 
-      // 4. Record success in local SQLite dedup database
+      // 3. Format document according to user layout (e.g. 4 pages on a sheet, orientation, repeat)
+      const layoutProcessor = LayoutProcessor.getInstance();
+      const jobDir = path.dirname(downloadedFilePath);
+      const layoutResult = await layoutProcessor.process(downloadedFilePath, effectiveOptions, jobDir);
+
+      let printableFilePath = downloadedFilePath;
+      if (layoutResult.isTransformed) {
+        transformedFilePath = layoutResult.outputPath;
+        printableFilePath = layoutResult.outputPath;
+        // Register transformed file with SecureTempManager so crash sweep protects/deletes it
+        SecureTempManager.getInstance().registerActiveFile(transformedFilePath);
+      }
+
+      // 4. Deterministically resolve target printer (B&W vs Color with physical availability verification)
+      const printerName = await this.printerService.resolveTargetPrinter(effectiveOptions, config);
+      logger.info(
+        'RealtimeManager',
+        `Job ${job.id} routing to printer: "${printerName}" (Mode: ${effectiveOptions?.color || 'bw'})`
+      );
+
+      // 5. Print silently via SumatraPDF / Spooler or Virtual Test Printer
+      const effectiveCopies = Math.min(100, Math.max(1, Number(effectiveOptions?.copies || job.copies || 1)));
+      await this.printerService.printPdf(printableFilePath, printerName, effectiveCopies, effectiveOptions);
+
+      // 6. Record success in local SQLite dedup database
       this.dedupDb.markJobProcessed(job.id, downloadResult.checksum, 'COMPLETED');
 
-      // 5. Update status in Supabase to COMPLETED
+      // 7. Update status in Supabase to COMPLETED
       await this.supabaseService.updateJobStatus(job.id, 'COMPLETED');
-      console.log(`[RealtimeManager] Job ${job.id} printed successfully!`);
+      logger.info('RealtimeManager', `Job ${job.id} printed successfully!`);
 
     } catch (err: any) {
       const errorMessage = err?.message || String(err);
-      console.error(`[RealtimeManager] Error executing job ${job.id}:`, errorMessage);
+      logger.error('RealtimeManager', `Error executing job ${job.id}: ${errorMessage}`);
 
       const nextRetryCount = (job.retry_count || 0) + 1;
       const isMaxRetriesReached = nextRetryCount >= 5;
@@ -287,14 +377,22 @@ export class RealtimeManager {
       await this.supabaseService.updateJobStatus(job.id, 'FAILED', finalErrorMessage, nextRetryCount);
     } finally {
       // Privacy-by-Default: Guaranteed cleanup & existence verification for EVERY job
+      if (transformedFilePath && fs.existsSync(transformedFilePath)) {
+        try {
+          await this.downloader.cleanup(transformedFilePath, true);
+        } catch (cleanErr) {
+          console.warn(`[RealtimeManager] Could not delete transformed file: ${transformedFilePath}`, cleanErr);
+        }
+      }
       if (downloadedFilePath) {
         await this.downloader.cleanup(downloadedFilePath, true);
         await this.supabaseService.markJobFileDeleted(job.id);
         console.log(`[RealtimeManager] [PRIVACY AUDIT] Job ${job.id} file deletion verified and recorded.`);
       }
 
-      // Revert agent status to ONLINE
-      this.heartbeatService.setStatus('ONLINE');
+      // Revert agent status to ONLINE and clear in-flight marker
+      this.currentlyProcessingJobId = null;
+      this.heartbeatService.setStatus('READY');
     }
   }
 }

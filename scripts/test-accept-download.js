@@ -29,7 +29,7 @@ async function test() {
     console.log('✅ Backend is UP:', res.data.status, '| DB:', res.data.database);
   } catch (e) {
     console.log('❌ Backend unreachable:', e.message);
-    console.log('   → Start the backend with: cd "c:/Users/avani/Downloads/print it/print it/backend" && npm start');
+    console.log('   → Start the backend with: cd ../backend && npm start');
     process.exit(1);
   }
 

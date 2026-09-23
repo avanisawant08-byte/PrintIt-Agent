@@ -8,6 +8,8 @@ import { HeartbeatService } from './heartbeat';
 import { SecureTempManager } from './secureTempManager';
 import { DashboardManager } from './dashboard';
 
+import { PrinterService } from './printer';
+
 app.setName('PrintIt Remote Agent');
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.printit.agent');
@@ -58,15 +60,22 @@ class Application {
     const heartbeatService = HeartbeatService.getInstance();
     const pairingManager = PairingManager.getInstance();
 
-    // Ensure agent automatically starts with Windows in the background (packaged production only)
+    // Ensure agent automatically starts with Windows in the background (enabled by default, configurable by shopkeeper)
     try {
-      if (app.isPackaged && !app.getLoginItemSettings().openAtLogin) {
-        app.setLoginItemSettings({
-          openAtLogin: true,
-          openAsHidden: true
-        });
+      const config = configManager.get();
+      const shouldAutoStart = config.autoStartOnBoot !== false;
+      if (app.isPackaged) {
+        const currentSettings = app.getLoginItemSettings();
+        if (currentSettings.openAtLogin !== shouldAutoStart) {
+          app.setLoginItemSettings({
+            openAtLogin: shouldAutoStart,
+            openAsHidden: true
+          });
+        }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[PrintIt Agent] Could not update login item settings:', e);
+    }
 
     // Setup pairing callback
     pairingManager.setOnPairedCallback(async () => {
@@ -74,10 +83,11 @@ class Application {
       await trayManager.updateMenu();
       await realtimeManager.start();
       heartbeatService.start();
+      heartbeatService.setStatus('READY');
       
-      // Auto-enable launch on Windows startup (packaged production only)
+      // Auto-enable launch on Windows startup (enabled by default, configurable by shopkeeper)
       try {
-        if (app.isPackaged) {
+        if (app.isPackaged && configManager.get().autoStartOnBoot !== false) {
           app.setLoginItemSettings({
             openAtLogin: true,
             openAsHidden: true
@@ -85,7 +95,7 @@ class Application {
         }
       } catch {}
 
-      console.log('[PrintIt Agent] Agent is running silently in the background.');
+      console.log('[PrintIt Agent] Agent is running silently in the background in READY state.');
     });
 
     // Setup switch shop callback from tray
@@ -98,12 +108,27 @@ class Application {
       pairingManager.showPairingWindow();
     });
 
-    // 5. Check if already paired
+    // 5. Authenticate and initialize on boot if already paired
     if (configManager.isPaired()) {
-      console.log('[PrintIt Agent] Device already paired. Connecting silently to shop realtime queue...');
+      console.log('[PrintIt Agent] Authenticating device credentials...');
+
+      // Verify printer hardware availability
+      try {
+        const printers = await PrinterService.getInstance().getAvailablePrinters(true);
+        console.log(`[PrintIt Agent] Verified printer availability: ${printers.length} printer(s) detected.`);
+      } catch (printerErr) {
+        console.warn('[PrintIt Agent] Warning checking printer availability on startup:', printerErr);
+      }
+
+      // Establish backend connection
+      console.log('[PrintIt Agent] Establishing backend connection...');
       await realtimeManager.start();
       heartbeatService.start();
-      // Runs 100% silently in background tray — no popup window!
+      heartbeatService.setStatus('READY');
+      await trayManager.updateMenu();
+      console.log('[PrintIt Agent] Backend connection established. Device entered READY state.');
+
+      DashboardManager.getInstance().showDashboardWindow();
     } else {
       console.log('[PrintIt Agent] Device unconfigured. Prompting for 6-character pairing code...');
       pairingManager.showPairingWindow();
@@ -117,6 +142,15 @@ class Application {
     });
   }
 }
+
+// Global process-level safety guards to ensure the background tray daemon never silently crashes
+process.on('uncaughtException', (error: Error) => {
+  console.error('[PrintIt Agent] [FATAL UNCAUGHT EXCEPTION]:', error?.stack || error?.message || error);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[PrintIt Agent] [UNHANDLED PROMISE REJECTION]:', reason?.stack || reason?.message || reason);
+});
 
 app.whenReady().then(() => {
   Application.init().catch((err) => {

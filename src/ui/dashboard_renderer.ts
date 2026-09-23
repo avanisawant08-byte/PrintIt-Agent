@@ -14,6 +14,8 @@ interface Window {
     getRecentJobs: () => Promise<Array<{ job_id: string; printed_at: string; status: string }>>;
     openSecureFolder: () => Promise<boolean>;
     repairDevice: () => Promise<boolean>;
+    getAutostart: () => Promise<boolean>;
+    setAutostart: (enabled: boolean) => Promise<boolean>;
   };
 }
 
@@ -171,8 +173,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  
+  const autostartToggle = document.getElementById('autostart-toggle') as HTMLInputElement;
+  const autostartStatusBadge = document.getElementById('autostart-status-badge') as HTMLElement;
+
+  async function loadAutostart() {
+    try {
+      const isAutostart = await window.dashboardApi.getAutostart();
+      if (autostartToggle) {
+        autostartToggle.checked = isAutostart;
+      }
+      if (autostartStatusBadge) {
+        autostartStatusBadge.textContent = isAutostart ? 'Enabled (Default)' : 'Disabled';
+        autostartStatusBadge.className = isAutostart ? 'badge-success' : 'badge-disabled';
+      }
+    } catch (e) {
+      console.error('Failed to load autostart setting:', e);
+    }
+  }
+
+  if (autostartToggle) {
+    autostartToggle.addEventListener('change', async () => {
+      const enabled = autostartToggle.checked;
+      await window.dashboardApi.setAutostart(enabled);
+      if (autostartStatusBadge) {
+        autostartStatusBadge.textContent = enabled ? 'Enabled' : 'Disabled';
+        autostartStatusBadge.className = enabled ? 'badge-success' : 'badge-disabled';
+      }
+      testPrintFeedback.textContent = `Windows auto-launch ${enabled ? 'enabled' : 'disabled'}.`;
+      testPrintFeedback.className = 'feedback-msg success';
+      setTimeout(() => {
+        testPrintFeedback.textContent = '';
+      }, 3000);
+    });
+  }
+
   // Initial load
   await loadStatus();
+  await loadAutostart();
   await loadPrinters();
   await loadRecentJobs();
 

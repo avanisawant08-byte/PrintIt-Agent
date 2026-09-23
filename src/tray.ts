@@ -98,7 +98,7 @@ export class TrayManager {
       },
       { type: 'separator' },
       {
-        label: isPaired ? `🟢 Online (Shop: ${config.shopId.slice(0, 8)}...)` : '⚪ Not Paired',
+        label: isPaired ? `🟢 READY (Shop: ${config.shopId.slice(0, 8)}...)` : '⚪ Not Paired',
         enabled: false
       },
       {
@@ -147,12 +147,18 @@ export class TrayManager {
       {
         label: 'Start with Windows',
         type: 'checkbox',
-        checked: app.getLoginItemSettings().openAtLogin,
+        checked: this.configManager.get().autoStartOnBoot !== false,
         click: (item) => {
-          app.setLoginItemSettings({
-            openAtLogin: item.checked,
-            openAsHidden: true
-          });
+          this.configManager.set({ autoStartOnBoot: item.checked });
+          try {
+            app.setLoginItemSettings({
+              openAtLogin: item.checked,
+              openAsHidden: true
+            });
+            console.log(`[TrayManager] Windows auto-startup set to: ${item.checked}`);
+          } catch (e) {
+            console.warn('[TrayManager] Failed to set login item settings:', e);
+          }
         }
       },
       { type: 'separator' },

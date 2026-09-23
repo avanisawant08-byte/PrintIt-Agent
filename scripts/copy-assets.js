@@ -36,4 +36,12 @@ if (fs.existsSync(uiSrc)) {
   }
 }
 
+// Copy sql-wasm.wasm to dist
+const wasmSrc = path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+const wasmDest = path.join(__dirname, '..', 'dist', 'sql-wasm.wasm');
+if (fs.existsSync(wasmSrc)) {
+  fs.copyFileSync(wasmSrc, wasmDest);
+  console.log('Copied sql-wasm.wasm to dist/');
+}
+
 console.log('Asset copying completed.');

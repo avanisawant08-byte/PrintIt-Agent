@@ -1,9 +1,7 @@
-const { Client } = require('c:/Users/avani/Downloads/print it/print it/backend/node_modules/pg');
+const { getDbClient } = require('./db.js');
 
 async function main() {
-  const client = new Client({
-    connectionString: 'postgresql://postgres.ncasateooojzdxyxszfn:os4XLmnlViI14UBA@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true'
-  });
+  const client = getDbClient();
   await client.connect();
 
   const job = await client.query("SELECT * FROM print_jobs WHERE order_id = 'Eaa0025'");

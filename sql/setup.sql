@@ -10,7 +10,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE agent_device_status AS ENUM ('ONLINE', 'OFFLINE', 'PRINTING');
+    CREATE TYPE agent_device_status AS ENUM ('ONLINE', 'OFFLINE', 'PRINTING', 'READY');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS print_jobs (
     is_secure BOOLEAN DEFAULT false,
     file_deleted BOOLEAN DEFAULT false,
     file_deleted_at TIMESTAMPTZ,
+    print_options JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS print_jobs (
 ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS is_secure BOOLEAN DEFAULT false;
 ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_deleted BOOLEAN DEFAULT false;
 ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS file_deleted_at TIMESTAMPTZ;
+ALTER TABLE print_jobs ADD COLUMN IF NOT EXISTS print_options JSONB DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_print_jobs_shop_status ON print_jobs (shop_id, status);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_created ON print_jobs (created_at);
@@ -128,3 +130,10 @@ BEGIN
     RETURN v_code;
 END;
 $$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+    ALTER TYPE agent_device_status ADD VALUE IF NOT EXISTS 'READY';
+EXCEPTION
+    WHEN duplicate_object THEN null;
+    WHEN undefined_object THEN null;
+END $$;

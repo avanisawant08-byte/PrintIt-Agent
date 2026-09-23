@@ -27,12 +27,22 @@ export class DedupDatabase {
       return;
     }
 
-    // Initialize sql.js WebAssembly engine with robust path resolution
-    const wasmPath = path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+    // Initialize sql.js WebAssembly engine with robust multi-tier path resolution
     const SQL = await initSqlJs({
       locateFile: (file) => {
-        if (fs.existsSync(wasmPath)) {
-          return wasmPath;
+        const candidatePaths = [
+          path.join(__dirname, file),
+          path.join(__dirname, '..', 'dist', file),
+          path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', file),
+          path.join(process.resourcesPath || '', file),
+          path.join(process.resourcesPath || '', 'dist', file),
+          path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', file)
+        ];
+
+        for (const candidate of candidatePaths) {
+          if (candidate && fs.existsSync(candidate)) {
+            return candidate;
+          }
         }
         return path.join(process.resourcesPath || __dirname, file);
       }

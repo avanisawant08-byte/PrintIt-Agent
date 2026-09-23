@@ -1,12 +1,9 @@
-const { Client } = require('c:/Users/avani/Downloads/print it/print it/backend/node_modules/pg');
-const crypto = require('crypto');
 const path = require('path');
-
-const client = new Client({
-  connectionString: 'postgresql://postgres.ncasateooojzdxyxszfn:os4XLmnlViI14UBA@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true'
-});
+const crypto = require('crypto');
+const { getDbClient } = require('./db.js');
 
 async function main() {
+  const client = getDbClient();
   await client.connect();
   console.log('Connected to Supabase Postgres.');
 
@@ -26,10 +23,14 @@ async function main() {
     return;
   }
 
-  // Check if we can initialize Firebase Admin to ensure all files have download tokens
   let getStorage;
   try {
-    const fb = require('c:/Users/avani/Downloads/print it/print it/backend/src/config/firebase.js');
+    let fb;
+    try {
+      fb = require('../backend/src/config/firebase.js');
+    } catch {
+      fb = require('c:/Users/avani/Downloads/print it/print it/backend/src/config/firebase.js');
+    }
     getStorage = fb.getStorage;
   } catch (e) {
     console.warn('Could not load Firebase Admin SDK:', e.message);

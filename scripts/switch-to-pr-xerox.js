@@ -1,12 +1,9 @@
-const { Client } = require('c:/Users/avani/Downloads/print it/print it/backend/node_modules/pg');
 const fs = require('fs');
 const path = require('path');
-
-const client = new Client({
-  connectionString: 'postgresql://postgres.ncasateooojzdxyxszfn:os4XLmnlViI14UBA@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true'
-});
+const { getDbClient } = require('./db.js');
 
 async function main() {
+  const client = getDbClient();
   await client.connect();
   const shopId = '0aada7cf-7b91-4a60-9a31-d520ff5dd02d'; // Pr xerox shop
 

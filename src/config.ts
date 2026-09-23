@@ -12,6 +12,8 @@ const DEFAULT_CONFIG: AgentConfig = {
   deviceName: process.env.COMPUTERNAME || 'Windows-Shop-Agent',
   authToken: process.env.DEFAULT_AUTH_TOKEN || '',
   selectedPrinter: undefined,
+  selectedPrinterBw: undefined,
+  selectedPrinterColor: undefined,
   supabaseUrl: process.env.SUPABASE_URL || 'https://your-project.supabase.co',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || 'your-supabase-anon-key',
   backendApiUrl: process.env.BACKEND_API_URL || 'https://api.printit.com',
@@ -48,32 +50,57 @@ export class ConfigManager {
   }
 
   private loadConfig(): AgentConfig {
-    try {
-      if (fs.existsSync(this.configPath)) {
-        const raw = fs.readFileSync(this.configPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        let resolvedAuthToken = parsed.authToken || '';
+    let resolvedConfig: AgentConfig = { ...DEFAULT_CONFIG };
+    let foundConfig = false;
 
-        const ss = this.getSafeStorage();
-        if (parsed.encryptedAuthToken && ss && typeof ss.isEncryptionAvailable === 'function' && ss.isEncryptionAvailable()) {
-          try {
-            const buf = Buffer.from(parsed.encryptedAuthToken, 'base64');
-            resolvedAuthToken = ss.decryptString(buf);
-          } catch (decErr) {
-            console.warn('[ConfigManager] Failed to decrypt encryptedAuthToken:', decErr);
+    // Potential candidate configuration paths across Electron and Node CLI environments
+    const candidatePaths = [
+      this.configPath,
+      process.env.APPDATA ? path.join(process.env.APPDATA, 'PrintIt Remote Agent', 'agent-config.json') : '',
+      process.env.APPDATA ? path.join(process.env.APPDATA, 'printit-remote-agent', 'agent-config.json') : '',
+      process.env.APPDATA ? path.join(process.env.APPDATA, 'PrintIt Agent', 'agent-config.json') : '',
+      path.join(process.cwd(), '.agent-data', 'agent-config.json')
+    ].filter(Boolean);
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf8');
+          const parsed = JSON.parse(raw);
+          let resolvedAuthToken = parsed.authToken || '';
+
+          const ss = this.getSafeStorage();
+          if (parsed.encryptedAuthToken && ss && typeof ss.isEncryptionAvailable === 'function' && ss.isEncryptionAvailable()) {
+            try {
+              const buf = Buffer.from(parsed.encryptedAuthToken, 'base64');
+              resolvedAuthToken = ss.decryptString(buf);
+            } catch (decErr) {
+              console.warn(`[ConfigManager] Failed to decrypt encryptedAuthToken from ${p}:`, decErr);
+            }
           }
-        }
 
-        return {
-          ...DEFAULT_CONFIG,
-          ...parsed,
-          authToken: resolvedAuthToken
-        };
+          resolvedConfig = {
+            ...resolvedConfig,
+            ...parsed,
+            authToken: resolvedAuthToken || resolvedConfig.authToken
+          };
+          foundConfig = true;
+
+          // If we found a fully paired config with authToken, we can stop searching
+          if (resolvedConfig.shopId && resolvedConfig.deviceId && resolvedConfig.authToken) {
+            break;
+          }
+        } catch (err) {
+          console.warn(`[ConfigManager] Could not parse config candidate: ${p}`, err);
+        }
       }
-    } catch (err) {
-      console.error('[ConfigManager] Error reading config, using defaults:', err);
     }
-    return { ...DEFAULT_CONFIG };
+
+    if (!foundConfig) {
+      console.log('[ConfigManager] No existing configuration file found; initializing with defaults.');
+    }
+
+    return resolvedConfig;
   }
 
   public get(): AgentConfig {
@@ -95,7 +122,9 @@ export class ConfigManager {
       shopId: '',
       deviceId: '',
       authToken: '',
-      selectedPrinter: undefined
+      selectedPrinter: undefined,
+      selectedPrinterBw: undefined,
+      selectedPrinterColor: undefined
     });
   }
 

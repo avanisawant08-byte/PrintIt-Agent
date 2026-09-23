@@ -39,6 +39,12 @@ export class DashboardManager {
         }
         this.dashboardWindow.show();
         this.dashboardWindow.focus();
+        this.dashboardWindow.setAlwaysOnTop(true);
+        setTimeout(() => {
+          if (this.dashboardWindow && !this.dashboardWindow.isDestroyed()) {
+            this.dashboardWindow.setAlwaysOnTop(false);
+          }
+        }, 1000);
         return;
       }
 
@@ -68,14 +74,35 @@ export class DashboardManager {
         }
       });
 
+      // Security Hardening: Block arbitrary popups and disallow navigation away from local UI
+      this.dashboardWindow.webContents.setWindowOpenHandler(() => {
+        return { action: 'deny' };
+      });
+
+      this.dashboardWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+        try {
+          const parsed = new URL(navigationUrl);
+          if (parsed.protocol !== 'file:') {
+            event.preventDefault();
+          }
+        } catch {
+          event.preventDefault();
+        }
+      });
+
       const htmlPath = path.join(__dirname, 'ui', 'dashboard.html');
       console.log('[DashboardManager] Loading file:', htmlPath);
       this.dashboardWindow.loadFile(htmlPath).then(() => {
         console.log('[DashboardManager] Dashboard file loaded successfully');
-        if (this.dashboardWindow) {
+        if (this.dashboardWindow && !this.dashboardWindow.isDestroyed()) {
           this.dashboardWindow.show();
           this.dashboardWindow.focus();
-          this.dashboardWindow.moveTop();
+          this.dashboardWindow.setAlwaysOnTop(true);
+          setTimeout(() => {
+            if (this.dashboardWindow && !this.dashboardWindow.isDestroyed()) {
+              this.dashboardWindow.setAlwaysOnTop(false);
+            }
+          }, 1000);
         }
       }).catch((err) => {
         console.error('[DashboardManager] Error loading HTML file:', err);
@@ -123,12 +150,13 @@ export class DashboardManager {
         deviceId: config.deviceId,
         deviceName: config.deviceName,
         selectedPrinter: config.selectedPrinter,
+        autoStartOnBoot: config.autoStartOnBoot !== false,
         isPaired: this.configManager.isPaired()
       };
     });
 
     ipcMain.handle('dashboard:get-printers', async () => {
-      const printers = await this.printerService.getAvailablePrinters();
+      const printers = await this.printerService.getAvailablePrinters(true);
       return printers.map((p) => ({
         name: p.name,
         isDefault: p.isDefault
@@ -177,6 +205,29 @@ export class DashboardManager {
       return true;
     });
 
+    
+    ipcMain.handle('dashboard:get-autostart', async () => {
+      const config = this.configManager.get();
+      return config.autoStartOnBoot !== false;
+    });
+
+    ipcMain.handle('dashboard:set-autostart', async (_event, enabled: boolean) => {
+      this.configManager.set({ autoStartOnBoot: enabled });
+      try {
+        app.setLoginItemSettings({
+          openAtLogin: enabled,
+          openAsHidden: true
+        });
+        console.log(`[DashboardManager] Auto-start updated by shopkeeper to: ${enabled}`);
+      } catch (e) {
+        console.warn('[DashboardManager] Failed to update login item settings:', e);
+      }
+      try {
+        const { TrayManager } = await import('./tray');
+        await TrayManager.getInstance().updateMenu();
+      } catch {}
+      return true;
+    });
     ipcMain.handle('dashboard:repair-device', async () => {
       this.configManager.clearPairing();
       this.closeDashboardWindow();

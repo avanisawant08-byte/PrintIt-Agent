@@ -59,6 +59,22 @@ export class PairingManager {
       }
     });
 
+    // Security Hardening: Block arbitrary popups and disallow navigation away from local UI
+    this.pairingWindow.webContents.setWindowOpenHandler(() => {
+      return { action: 'deny' };
+    });
+
+    this.pairingWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+      try {
+        const parsed = new URL(navigationUrl);
+        if (parsed.protocol !== 'file:') {
+          event.preventDefault();
+        }
+      } catch {
+        event.preventDefault();
+      }
+    });
+
     this.pairingWindow.setMenuBarVisibility(false);
     this.pairingWindow.loadFile(path.join(__dirname, 'ui', 'pairing.html'));
 

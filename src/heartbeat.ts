@@ -7,7 +7,7 @@ import { AgentDeviceStatus } from './types';
 export class HeartbeatService {
   private static instance: HeartbeatService;
   private timer: NodeJS.Timeout | null = null;
-  private currentStatus: AgentDeviceStatus = 'ONLINE';
+  private currentStatus: AgentDeviceStatus = 'READY';
   private supabaseService: SupabaseService;
   private configManager: ConfigManager;
 
@@ -49,7 +49,7 @@ export class HeartbeatService {
     }
 
     console.log(`[HeartbeatService] Starting heartbeat loop (every ${config.heartbeatIntervalSec}s)`);
-    this.currentStatus = 'ONLINE';
+    this.currentStatus = 'READY';
     this.sendHeartbeat();
 
     this.timer = setInterval(() => {

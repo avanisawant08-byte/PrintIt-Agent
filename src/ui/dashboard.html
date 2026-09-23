@@ -77,6 +77,28 @@
             </div>
           </div>
         </div>
+      
+        <div class="card autostart-card" style="grid-column: span 2;">
+          <div class="card-header flex-between">
+            <div class="header-left">
+              <span class="card-icon">🚀</span>
+              <h3>Windows Auto-Launch (Shopkeeper Setting)</h3>
+            </div>
+            <label class="switch" title="Toggle automatic startup on Windows user login">
+              <input type="checkbox" id="autostart-toggle" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="label">Launch on Windows Login:</span>
+              <span class="value badge-success" id="autostart-status-badge">Enabled (Default)</span>
+            </div>
+            <p class="desc-text" style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+              Automatically launches the PrintIt Agent when this Windows user logs in. Enabled by default; runs with standard user privileges without elevation.
+            </p>
+          </div>
+        </div>
       </section>
 
       <!-- Printer Selection Card -->

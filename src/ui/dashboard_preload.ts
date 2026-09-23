@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld('dashboardApi', {
   testPrint: () => ipcRenderer.invoke('dashboard:test-print'),
   getRecentJobs: () => ipcRenderer.invoke('dashboard:get-recent-jobs'),
   openSecureFolder: () => ipcRenderer.invoke('dashboard:open-secure-folder'),
-  repairDevice: () => ipcRenderer.invoke('dashboard:repair-device')
+  repairDevice: () => ipcRenderer.invoke('dashboard:repair-device'),
+  getAutostart: () => ipcRenderer.invoke('dashboard:get-autostart'),
+  setAutostart: (enabled: boolean) => ipcRenderer.invoke('dashboard:set-autostart', enabled)
 });
