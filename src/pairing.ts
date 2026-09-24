@@ -148,7 +148,8 @@ export class PairingManager {
           .maybeSingle();
 
         if (error) {
-          return { success: false, error: 'Database error while verifying code.' };
+          console.error('[PairingManager] Supabase error while verifying code:', error);
+          return { success: false, error: error.message || 'Database error while verifying code.' };
         }
 
         if (!data) {

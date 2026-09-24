@@ -14,9 +14,9 @@ const DEFAULT_CONFIG: AgentConfig = {
   selectedPrinter: undefined,
   selectedPrinterBw: undefined,
   selectedPrinterColor: undefined,
-  supabaseUrl: process.env.SUPABASE_URL || 'https://your-project.supabase.co',
-  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || 'your-supabase-anon-key',
-  backendApiUrl: process.env.BACKEND_API_URL || 'https://api.printit.com',
+  supabaseUrl: process.env.SUPABASE_URL || 'https://ncasateooojzdxyxszfn.supabase.co',
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jYXNhdGVvb29qemR4eXhzemZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNTY3NjcsImV4cCI6MjA5MzYzMjc2N30.Inq_6jnWP-6KlNWu6IPE-pBI5MHgJ3p4ndIRm1m3E2I',
+  backendApiUrl: process.env.BACKEND_API_URL || 'http://localhost:3000',
   autoStartOnBoot: true,
   heartbeatIntervalSec: Number(process.env.HEARTBEAT_INTERVAL_SEC) || 30
 };
@@ -68,6 +68,17 @@ export class ConfigManager {
           const raw = fs.readFileSync(p, 'utf8');
           const parsed = JSON.parse(raw);
           let resolvedAuthToken = parsed.authToken || '';
+
+          // Filter out dummy/placeholder values that might have been saved in an earlier build
+          if (parsed.supabaseUrl && (parsed.supabaseUrl.includes('your-project') || !parsed.supabaseUrl.startsWith('http'))) {
+            delete parsed.supabaseUrl;
+          }
+          if (parsed.supabaseAnonKey && (parsed.supabaseAnonKey.includes('your-supabase') || parsed.supabaseAnonKey.length < 20)) {
+            delete parsed.supabaseAnonKey;
+          }
+          if (parsed.backendApiUrl && parsed.backendApiUrl.includes('api.printit.com')) {
+            delete parsed.backendApiUrl;
+          }
 
           const ss = this.getSafeStorage();
           if (parsed.encryptedAuthToken && ss && typeof ss.isEncryptionAvailable === 'function' && ss.isEncryptionAvailable()) {
