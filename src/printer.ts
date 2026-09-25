@@ -4,6 +4,7 @@ import { getPrinters, print } from 'pdf-to-printer';
 import { PrinterDevice, PrintOptions, AgentConfig } from './types';
 import { getUserDataDir } from './paths';
 import { logger } from './logger';
+import { app } from 'electron';
 
 export const VIRTUAL_PRINTER_NAME = 'Virtual Test Printer (Save to Disk)';
 
@@ -126,7 +127,13 @@ export class PrinterService {
   }
 
   private async printToVirtualDisk(filePath: string, copies: number): Promise<{ savedPath: string }> {
-    const outDir = path.join(process.cwd(), 'output_prints');
+    // Use userData dir for reliable path in both dev and packaged Electron
+    let outDir: string;
+    try {
+      outDir = path.join(app.getPath('userData'), 'output_prints');
+    } catch {
+      outDir = path.join(getUserDataDir(), 'output_prints');
+    }
     if (!fs.existsSync(outDir)) {
       fs.mkdirSync(outDir, { recursive: true });
     }

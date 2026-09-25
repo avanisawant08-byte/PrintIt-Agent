@@ -244,8 +244,20 @@ export class PdfDownloader {
       method: 'GET',
       url,
       responseType: 'stream',
-      timeout: 45000 // 45s for large files on slow shop networks
+      timeout: 45000, // 45s for large files on slow shop networks
+      validateStatus: null // Don't throw on non-2xx — we handle it below
     });
+
+    // Reject non-2xx responses before writing anything to disk.
+    // Without this check, error bodies (e.g. a 15-byte "Access Denied" string)
+    // get streamed into the file and produce corrupt/blank PDFs.
+    if (response.status < 200 || response.status >= 300) {
+      // Consume and discard the response body to free the socket
+      response.data.resume();
+      const err: any = new Error(`HTTP ${response.status} downloading file`);
+      err.response = response;
+      throw err;
+    }
 
     const fileStream = fs.createWriteStream(targetPath);
 
