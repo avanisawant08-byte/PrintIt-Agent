@@ -5,6 +5,7 @@ import { TrayManager } from './tray';
 import { PairingManager } from './pairing';
 import { RealtimeManager } from './realtime';
 import { HeartbeatService } from './heartbeat';
+import { ReprintPoller } from './reprintPoller';
 import { SecureTempManager } from './secureTempManager';
 import { DashboardManager } from './dashboard';
 
@@ -58,6 +59,7 @@ class Application {
     // 4. Initialize Services
     const realtimeManager = RealtimeManager.getInstance();
     const heartbeatService = HeartbeatService.getInstance();
+    const reprintPoller = ReprintPoller.getInstance();
     const pairingManager = PairingManager.getInstance();
 
     // Ensure agent automatically starts with Windows in the background (enabled by default, configurable by shopkeeper)
@@ -84,7 +86,8 @@ class Application {
       await realtimeManager.start();
       heartbeatService.start();
       heartbeatService.setStatus('READY');
-      
+      reprintPoller.start();
+
       // Auto-enable launch on Windows startup (enabled by default, configurable by shopkeeper)
       try {
         if (app.isPackaged && configManager.get().autoStartOnBoot !== false) {
@@ -125,6 +128,7 @@ class Application {
       await realtimeManager.start();
       heartbeatService.start();
       heartbeatService.setStatus('READY');
+      reprintPoller.start();
       await trayManager.updateMenu();
       console.log('[PrintIt Agent] Backend connection established. Device entered READY state.');
 
@@ -137,6 +141,7 @@ class Application {
     // Graceful shutdown
     app.on('before-quit', async () => {
       console.log('[PrintIt Agent] Shutting down agent...');
+      reprintPoller.stop();
       await heartbeatService.stop();
       await realtimeManager.stop();
     });

@@ -67,3 +67,23 @@ export interface ProcessedJobRecord {
   printed_at: number;
   status: PrintJobStatus;
 }
+
+// ── Reprint Jobs (agent_print_jobs table) ────────────────────────────────────
+
+export interface ReprintPrintOptions {
+  color?: 'bw' | 'color' | string;
+  sides?: 'single' | 'double' | string;
+  copies?: number;
+  size?: string;
+  binding?: string;
+  [key: string]: any;
+}
+
+/** Shape returned by GET /api/agent/jobs */
+export interface ReprintJob {
+  id: number;
+  order_id: string;
+  file_index: number;
+  storage_path: string;
+  print_options: ReprintPrintOptions;
+}

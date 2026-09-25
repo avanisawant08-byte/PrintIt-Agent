@@ -16,6 +16,7 @@ interface Window {
     repairDevice: () => Promise<boolean>;
     getAutostart: () => Promise<boolean>;
     setAutostart: (enabled: boolean) => Promise<boolean>;
+    onActivityLog: (callback: (entry: { message: string; timestamp: string }) => void) => void;
   };
 }
 
@@ -214,6 +215,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadPrinters();
   await loadRecentJobs();
 
-  // Periodic polling for new jobs
+  // Periodic polling for new jobs (SQLite history)
   setInterval(loadRecentJobs, 5000);
+
+  // ── Reprint Activity Log ───────────────────────────────────────────────────
+  // Listen for live push-events from the ReprintPoller (main process)
+  // and display them in the activity log section if it exists in the HTML.
+  const activityLog = document.getElementById('reprint-activity-log') as HTMLElement | null;
+  const MAX_ACTIVITY_ENTRIES = 50;
+
+  if (activityLog && window.dashboardApi.onActivityLog) {
+    window.dashboardApi.onActivityLog((entry) => {
+      const isSuccess = entry.message.startsWith('✅');
+      const time = new Date(entry.timestamp).toLocaleTimeString();
+
+      const row = document.createElement('div');
+      row.className = `activity-entry ${isSuccess ? 'activity-success' : 'activity-warning'}`;
+      row.innerHTML = `<span class="activity-time">${time}</span><span class="activity-msg">${entry.message}</span>`;
+
+      // Prepend so newest is at top
+      activityLog.insertBefore(row, activityLog.firstChild);
+
+      // Trim to max entries
+      while (activityLog.children.length > MAX_ACTIVITY_ENTRIES) {
+        activityLog.removeChild(activityLog.lastChild!);
+      }
+    });
+  }
 });

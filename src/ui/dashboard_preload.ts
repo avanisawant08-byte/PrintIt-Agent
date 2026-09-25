@@ -9,5 +9,9 @@ contextBridge.exposeInMainWorld('dashboardApi', {
   openSecureFolder: () => ipcRenderer.invoke('dashboard:open-secure-folder'),
   repairDevice: () => ipcRenderer.invoke('dashboard:repair-device'),
   getAutostart: () => ipcRenderer.invoke('dashboard:get-autostart'),
-  setAutostart: (enabled: boolean) => ipcRenderer.invoke('dashboard:set-autostart', enabled)
+  setAutostart: (enabled: boolean) => ipcRenderer.invoke('dashboard:set-autostart', enabled),
+  /** Registers a callback invoked whenever a reprint job completes (or fails). */
+  onActivityLog: (callback: (entry: { message: string; timestamp: string }) => void) => {
+    ipcRenderer.on('reprint:activity-log', (_event, entry) => callback(entry));
+  }
 });
