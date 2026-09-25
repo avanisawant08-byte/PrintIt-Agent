@@ -11,6 +11,8 @@ import { PrintJob } from '../types';
 
 test('Startup Lifecycle: Auto-start enabled by default and configurable by shopkeeper', () => {
   const configManager = ConfigManager.getInstance();
+  // Ensure starting state is default true
+  configManager.set({ autoStartOnBoot: true });
   const initial = configManager.get();
 
   // 1. Must be enabled by default

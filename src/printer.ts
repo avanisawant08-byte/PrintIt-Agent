@@ -44,18 +44,62 @@ export class PrinterService {
       }
     }
 
-    // Verify availability against installed printers
+    const available = await this.getAvailablePrinters();
+
+    // 1. Exact match
     if (chosenPrinter && chosenPrinter !== VIRTUAL_PRINTER_NAME) {
-      const available = await this.getAvailablePrinters();
-      const exists = available.some((p) => p.name.toLowerCase() === chosenPrinter!.toLowerCase());
-      if (!exists) {
+      const match = available.find((p) => p.name.toLowerCase() === chosenPrinter!.toLowerCase());
+      if (match) {
+        return match.name;
+      }
+
+      // 2. Fuzzy / partial match (e.g. "pdf" or "OneNote")
+      const partialMatch = available.find((p) =>
+        p.name.toLowerCase().includes(chosenPrinter!.toLowerCase()) ||
+        chosenPrinter!.toLowerCase().includes(p.name.toLowerCase())
+      );
+      if (partialMatch) {
+        console.log(`[PrinterService] Matched printer "${chosenPrinter}" to "${partialMatch.name}"`);
+        return partialMatch.name;
+      }
+
+      // If printer_name was explicitly requested in order options, reject if unavailable
+      if (printOptions?.printer_name) {
         throw new Error(
           `Printer Unavailable: Configured target printer "${chosenPrinter}" is not found or offline on this system.`
         );
       }
+
+      // 3. Graceful fallback if configured default printer is unavailable
+      console.warn(
+        `[PrinterService] Target printer "${chosenPrinter}" not found on system. Falling back to configured printer.`
+      );
+      const fallback =
+        (isColor && config?.selectedPrinterColor) ||
+        (!isColor && config?.selectedPrinterBw) ||
+        config?.selectedPrinter;
+
+      if (fallback) {
+        const fallbackMatch = available.find(
+          (p) => p.name.toLowerCase() === fallback.toLowerCase()
+        );
+        if (fallbackMatch) {
+          return fallbackMatch.name;
+        }
+      }
+
+      // 4. Fallback to first available physical/OS printer
+      const firstReal = available.find((p) => p.name !== VIRTUAL_PRINTER_NAME);
+      if (firstReal) {
+        return firstReal.name;
+      }
+
+      throw new Error(
+        `Printer Unavailable: Configured target printer "${chosenPrinter}" is not found or offline on this system.`
+      );
     }
 
-    return chosenPrinter || VIRTUAL_PRINTER_NAME;
+    return chosenPrinter || config?.selectedPrinter || VIRTUAL_PRINTER_NAME;
   }
 
   /**
@@ -108,8 +152,8 @@ export class PrinterService {
       `[PrinterService] Target printer: ${printerName || 'SYSTEM DEFAULT'}, Copies: ${copies}, Options: ${JSON.stringify(printOptions || {})}`
     );
 
-    // Hardware-free Virtual Printer Mode
-    if (printerName === VIRTUAL_PRINTER_NAME) {
+    // Hardware-free Virtual Printer Mode (including Microsoft Print to PDF which cannot print silently via GDI without blanking)
+    if (printerName === VIRTUAL_PRINTER_NAME || (printerName && printerName.toLowerCase().includes('print to pdf'))) {
       return this.printToVirtualDisk(filePath, copies);
     }
 

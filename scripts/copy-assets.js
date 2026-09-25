@@ -29,7 +29,7 @@ if (fs.existsSync(uiSrc)) {
   }
   const files = fs.readdirSync(uiSrc);
   for (const file of files) {
-    if (file.endsWith('.html') || file.endsWith('.css')) {
+    if (file.endsWith('.html') || file.endsWith('.css') || file.endsWith('.png') || file.endsWith('.svg') || file.endsWith('.ico')) {
       fs.copyFileSync(path.join(uiSrc, file), path.join(uiDest, file));
       console.log(`Copied ${file} to dist/ui/`);
     }

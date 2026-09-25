@@ -138,12 +138,30 @@ class Application {
       pairingManager.showPairingWindow();
     }
 
-    // Graceful shutdown
-    app.on('before-quit', async () => {
-      console.log('[PrintIt Agent] Shutting down agent...');
-      reprintPoller.stop();
-      await heartbeatService.stop();
-      await realtimeManager.stop();
+    // Graceful shutdown with asynchronous completion guard
+    let isShuttingDown = false;
+    app.on('before-quit', async (event) => {
+      if (isShuttingDown) return;
+      event.preventDefault();
+      isShuttingDown = true;
+      console.log('[PrintIt Agent] Gracefully shutting down agent and marking device OFFLINE...');
+      try {
+        reprintPoller.stop();
+        await heartbeatService.stop();
+        await realtimeManager.stop();
+      } catch (err) {
+        console.error('[PrintIt Agent] Error during shutdown:', err);
+      } finally {
+        app.quit();
+      }
+    });
+
+    const shutdownSignals = ['SIGINT', 'SIGTERM'] as const;
+    shutdownSignals.forEach((signal) => {
+      process.on(signal, async () => {
+        console.log(`[PrintIt Agent] Received ${signal}. Shutting down...`);
+        app.quit();
+      });
     });
   }
 }

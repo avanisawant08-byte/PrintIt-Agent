@@ -21,6 +21,7 @@ import { PrinterService } from './printer';
 import { logger } from './logger';
 import { ReprintJob, ReprintPrintOptions } from './types';
 import { PdfDownloader } from './downloader';
+import { LayoutProcessor } from './layoutProcessor';
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -179,12 +180,22 @@ export class ReprintPoller {
       return;
     }
 
-    // 6. Print silently via SumatraPDF / Spooler
+    // 6. Format document according to user layout (e.g. N-up, image to PDF) & Print silently
     const copies = Math.min(100, Math.max(1, Number(opts.copies ?? 1)));
     const shortOrderId = String(job.order_id).slice(0, 8);
 
+    let printableFilePath = tempFilePath;
+    let transformedFilePath: string | null = null;
+
     try {
-      await this.printerService.printPdf(tempFilePath, printerName, copies, printOptions);
+      const layoutProcessor = LayoutProcessor.getInstance();
+      const layoutResult = await layoutProcessor.process(tempFilePath, printOptions, path.dirname(tempFilePath));
+      if (layoutResult.isTransformed) {
+        transformedFilePath = layoutResult.outputPath;
+        printableFilePath = layoutResult.outputPath;
+      }
+
+      await this.printerService.printPdf(printableFilePath, printerName, copies, printOptions);
       logger.info('ReprintPoller', `Job #${job.id} reprinted successfully (order ${job.order_id})`);
       this.pushActivityLog(`✅ Reprinted order #${shortOrderId} — ${filename}`);
     } catch (err: any) {
@@ -193,6 +204,9 @@ export class ReprintPoller {
     } finally {
       // 7. Always delete temp file after spooling (privacy-by-default)
       this.safeDelete(tempFilePath);
+      if (transformedFilePath) {
+        this.safeDelete(transformedFilePath);
+      }
       this.inFlight.delete(job.id);
     }
   }

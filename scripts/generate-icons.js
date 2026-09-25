@@ -2,14 +2,16 @@ const { nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-const src = 'C:\\Users\\avani\\.gemini\\antigravity-ide\\brain\\6c42bf41-b60a-4a90-b950-9191bf66d72c\\printit_agent_icon_1789138144771.jpg';
+const src = path.join(__dirname, '..', 'assets', 'logo_cropped.png');
 const img = nativeImage.createFromPath(src);
-console.log('Original size:', img.getSize());
+console.log('Original logo size:', img.getSize());
 
-const icon64 = img.resize({ width: 64, height: 64 });
-fs.writeFileSync(path.join(__dirname, '..', 'assets', 'icon.png'), icon64.toPNG());
+// Generate icon.png (256x256 high-res for windows/taskbar)
+const icon256 = img.resize({ width: 256, height: 256, quality: 'best' });
+fs.writeFileSync(path.join(__dirname, '..', 'assets', 'icon.png'), icon256.toPNG());
 
-const icon32 = img.resize({ width: 32, height: 32 });
+// Generate icon32.png (32x32 for system tray)
+const icon32 = img.resize({ width: 32, height: 32, quality: 'best' });
 fs.writeFileSync(path.join(__dirname, '..', 'assets', 'icon32.png'), icon32.toPNG());
 
 function createIco(pngBuffers) {
@@ -57,11 +59,12 @@ function createIco(pngBuffers) {
 }
 
 const icoBuf = createIco([
-  img.resize({ width: 16, height: 16 }).toPNG(),
-  img.resize({ width: 32, height: 32 }).toPNG(),
-  img.resize({ width: 48, height: 48 }).toPNG(),
-  img.resize({ width: 64, height: 64 }).toPNG(),
-  img.resize({ width: 256, height: 256 }).toPNG()
+  img.resize({ width: 16, height: 16, quality: 'best' }).toPNG(),
+  img.resize({ width: 32, height: 32, quality: 'best' }).toPNG(),
+  img.resize({ width: 48, height: 48, quality: 'best' }).toPNG(),
+  img.resize({ width: 64, height: 64, quality: 'best' }).toPNG(),
+  img.resize({ width: 128, height: 128, quality: 'best' }).toPNG(),
+  img.resize({ width: 256, height: 256, quality: 'best' }).toPNG()
 ]);
 
 fs.writeFileSync(path.join(__dirname, '..', 'assets', 'icon.ico'), icoBuf);

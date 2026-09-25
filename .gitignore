@@ -16,3 +16,4 @@ Thumbs.db
 .temp/
 output_prints/
 scratch/
+*.pdf

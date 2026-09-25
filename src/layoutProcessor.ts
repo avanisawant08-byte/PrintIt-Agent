@@ -274,7 +274,11 @@ export class LayoutProcessor {
       height: drawH
     });
 
-    return doc;
+    // CRITICAL: pdf-lib requires the document to be serialized and reloaded before its pages can be
+    // embedded into another document via destDoc.embedPages(). Otherwise, the image XObject stream
+    // is dropped, resulting in a completely blank page output!
+    const serializedBytes = await doc.save();
+    return PDFDocument.load(serializedBytes);
   }
 
   public getGridConfig(pagesPerPaper: number, isLandscape: boolean): GridConfig {

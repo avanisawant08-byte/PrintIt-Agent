@@ -180,14 +180,16 @@ export class TrayManager {
     const targetPrinter = config.selectedPrinter;
 
     try {
-      // Create a temporary minimal test PDF or print a test line
+      // Create a rich diagnostic test PDF
       const testPdfPath = path.join(app.getPath('temp'), 'printit-test-slip.pdf');
-      
-      // Simple 1-page minimal PDF binary buffer for immediate validation
-      const minimalPdf = Buffer.from(
-        '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 300 200]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000060 00000 n\n0000000118 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n190\n%%EOF'
-      );
-      fs.writeFileSync(testPdfPath, minimalPdf);
+      const { generateTestPagePdf } = await import('./testPageGenerator');
+      await generateTestPagePdf(testPdfPath, {
+        shopName: config.shopName,
+        shopId: config.shopId,
+        deviceName: config.deviceName,
+        printerName: targetPrinter,
+        version: app.getVersion()
+      });
 
       const result = await this.printerService.printPdf(testPdfPath, targetPrinter, 1);
       
