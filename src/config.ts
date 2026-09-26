@@ -22,7 +22,8 @@ const DEFAULT_CONFIG: AgentConfig = {
   enableBatchJobIsolation: true,
   padOddDuplexFiles: true,
   haltBatchOnFailure: false,
-  spoolerInterJobDelayMs: 800
+  spoolerInterJobDelayMs: 800,
+  enableSelectivePagePrinting: true
 };
 
 export class ConfigManager {

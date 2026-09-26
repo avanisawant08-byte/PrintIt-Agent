@@ -263,8 +263,9 @@ export class PrinterService {
           options.paperSize = sizeStr;
         }
       }
-      if (printOptions.page_range) {
-        const rangeStr = String(printOptions.page_range).trim();
+      const rawPages = printOptions.pages || printOptions.page_range;
+      if (rawPages) {
+        const rangeStr = String(rawPages).trim();
         if (/^[0-9,\-\s]+$/.test(rangeStr)) {
           options.pages = rangeStr;
         } else {

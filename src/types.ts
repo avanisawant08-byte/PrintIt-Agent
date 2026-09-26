@@ -12,6 +12,8 @@ export interface PrintOptions {
   pages_per_paper?: number;
   repeat_image_on_grid?: boolean;
   page_range?: string;
+  pages?: string;
+  pad_odd_duplex?: boolean;
   [key: string]: any;
 }
 
@@ -59,6 +61,7 @@ export interface AgentConfig {
   padOddDuplexFiles?: boolean;
   haltBatchOnFailure?: boolean;
   spoolerInterJobDelayMs?: number;
+  enableSelectivePagePrinting?: boolean;
 }
 
 export interface PrinterDevice {

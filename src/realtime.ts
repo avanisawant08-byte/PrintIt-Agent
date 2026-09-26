@@ -8,6 +8,7 @@ import { PdfDownloader } from './downloader';
 import { PrinterService } from './printer';
 import { HeartbeatService } from './heartbeat';
 import { LayoutProcessor } from './layoutProcessor';
+import { PageSelector } from './pageSelector';
 import { SecureTempManager } from './secureTempManager';
 import { PrintJob } from './types';
 import { logger } from './logger';
@@ -339,6 +340,7 @@ export class RealtimeManager {
     this.heartbeatService.setStatus('PRINTING');
 
     let downloadedFilePath: string | null = null;
+    let subsetFilePath: string | null = null;
     let transformedFilePath: string | null = null;
 
     try {
@@ -369,12 +371,41 @@ export class RealtimeManager {
         `Job ${job.id} effective print options: ${JSON.stringify(effectiveOptions || {})}`
       );
 
+      // 2.5 Extract selective pages if requested (PRD: Selective Page Printing)
+      // Must execute BEFORE layoutProcessor so N-up, orientation, and duplex operate on the requested subset.
+      const pageSelection = effectiveOptions?.pages || effectiveOptions?.page_range;
+      let activePdfPath = downloadedFilePath;
+      const jobDir = path.dirname(downloadedFilePath);
+
+      if (pageSelection && config.enableSelectivePagePrinting !== false) {
+        const pageSelector = PageSelector.getInstance();
+        const selectResult = await pageSelector.extractPageSubset(
+          downloadedFilePath,
+          pageSelection,
+          jobDir
+        );
+        if (selectResult.isExtracted) {
+          subsetFilePath = selectResult.outputPath;
+          activePdfPath = selectResult.outputPath;
+          SecureTempManager.getInstance().registerActiveFile(subsetFilePath);
+          logger.info(
+            'RealtimeManager',
+            `Selective page extraction successful for job ${job.id}: ${selectResult.pageCount} page(s) extracted -> ${path.basename(subsetFilePath)}`
+          );
+          // Strip page_range and pages so downstream SumatraPDF/driver does not re-filter the already-extracted subset!
+          effectiveOptions = {
+            ...effectiveOptions,
+            page_range: undefined,
+            pages: undefined
+          };
+        }
+      }
+
       // 3. Format document according to user layout (e.g. 4 pages on a sheet, orientation, repeat)
       const layoutProcessor = LayoutProcessor.getInstance();
-      const jobDir = path.dirname(downloadedFilePath);
-      const layoutResult = await layoutProcessor.process(downloadedFilePath, effectiveOptions, jobDir);
+      const layoutResult = await layoutProcessor.process(activePdfPath, effectiveOptions, jobDir);
 
-      let printableFilePath = downloadedFilePath;
+      let printableFilePath = activePdfPath;
       if (layoutResult.isTransformed) {
         transformedFilePath = layoutResult.outputPath;
         printableFilePath = layoutResult.outputPath;
@@ -447,6 +478,13 @@ export class RealtimeManager {
           await this.downloader.cleanup(transformedFilePath, true);
         } catch (cleanErr) {
           console.warn(`[RealtimeManager] Could not delete transformed file: ${transformedFilePath}`, cleanErr);
+        }
+      }
+      if (subsetFilePath && fs.existsSync(subsetFilePath)) {
+        try {
+          await this.downloader.cleanup(subsetFilePath, true);
+        } catch (cleanErr) {
+          console.warn(`[RealtimeManager] Could not delete subset file: ${subsetFilePath}`, cleanErr);
         }
       }
       if (downloadedFilePath) {

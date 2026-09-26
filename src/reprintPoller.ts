@@ -22,6 +22,7 @@ import { logger } from './logger';
 import { ReprintJob, ReprintPrintOptions } from './types';
 import { PdfDownloader } from './downloader';
 import { LayoutProcessor } from './layoutProcessor';
+import { PageSelector } from './pageSelector';
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -186,13 +187,39 @@ export class ReprintPoller {
 
     let printableFilePath = tempFilePath;
     let transformedFilePath: string | null = null;
+    let subsetFilePath: string | null = null;
 
     try {
+      const pageSelection = printOptions.pages || printOptions.page_range;
+      let activePdfPath = tempFilePath;
+      const jobDir = path.dirname(tempFilePath);
+
+      if (pageSelection && config.enableSelectivePagePrinting !== false) {
+        const pageSelector = PageSelector.getInstance();
+        const selectResult = await pageSelector.extractPageSubset(
+          tempFilePath,
+          pageSelection,
+          jobDir
+        );
+        if (selectResult.isExtracted) {
+          subsetFilePath = selectResult.outputPath;
+          activePdfPath = selectResult.outputPath;
+          logger.info(
+            'ReprintPoller',
+            `Selective page extraction for reprint job #${job.id}: ${selectResult.pageCount} page(s) -> ${path.basename(subsetFilePath)}`
+          );
+          printOptions.page_range = undefined;
+          printOptions.pages = undefined;
+        }
+      }
+
       const layoutProcessor = LayoutProcessor.getInstance();
-      const layoutResult = await layoutProcessor.process(tempFilePath, printOptions, path.dirname(tempFilePath));
+      const layoutResult = await layoutProcessor.process(activePdfPath, printOptions, jobDir);
       if (layoutResult.isTransformed) {
         transformedFilePath = layoutResult.outputPath;
         printableFilePath = layoutResult.outputPath;
+      } else {
+        printableFilePath = activePdfPath;
       }
 
       await this.printerService.printPdf(printableFilePath, printerName, copies, printOptions);
@@ -204,6 +231,9 @@ export class ReprintPoller {
     } finally {
       // 7. Always delete temp file after spooling (privacy-by-default)
       this.safeDelete(tempFilePath);
+      if (subsetFilePath) {
+        this.safeDelete(subsetFilePath);
+      }
       if (transformedFilePath) {
         this.safeDelete(transformedFilePath);
       }
@@ -307,7 +337,13 @@ export class ReprintPoller {
       sides: opts.sides,
       copies: opts.copies,
       size: opts.size,
-      binding: opts.binding
+      binding: opts.binding,
+      pages: opts.pages,
+      page_range: opts.page_range,
+      pages_per_paper: opts.pages_per_paper,
+      orientation: opts.orientation,
+      repeat_image_on_grid: opts.repeat_image_on_grid,
+      pad_odd_duplex: opts.pad_odd_duplex
     };
   }
 
