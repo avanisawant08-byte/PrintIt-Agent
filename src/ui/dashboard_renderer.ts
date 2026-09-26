@@ -109,12 +109,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       jobsCountBadge.textContent = `${jobs.length} job(s)`;
       jobsTableBody.innerHTML = jobs
-        .map((j) => {
+        .map((j: any) => {
           const time = new Date(j.printed_at).toLocaleTimeString();
+          const orderLabel = j.order_id
+            ? `Order #${j.order_id.slice(0, 8)} (File ${(j.file_index || 0) + 1})`
+            : `${j.job_id.slice(0, 12)}...`;
+          const statusClass = j.status === 'COMPLETED' ? 'badge-success' : 'badge-error';
           return `
             <tr>
-              <td class="mono">${j.job_id.slice(0, 12)}...</td>
-              <td><span class="badge-success">${j.status}</span></td>
+              <td class="mono" title="Job: ${j.job_id}${j.order_id ? ' | Order: ' + j.order_id : ''}">${orderLabel}</td>
+              <td><span class="${statusClass}">${j.status}</span></td>
               <td>🛡️ Auto-Purged</td>
               <td>${time}</td>
             </tr>

@@ -71,6 +71,17 @@ export class DedupDatabase {
       CREATE INDEX IF NOT EXISTS idx_processed_printed_at ON processed_jobs (printed_at);
     `);
 
+    // Migration guard: ensure order_id and file_index exist across all DB instances
+    try {
+      this.db.run("ALTER TABLE processed_jobs ADD COLUMN order_id TEXT;");
+    } catch {}
+    try {
+      this.db.run("ALTER TABLE processed_jobs ADD COLUMN file_index INTEGER DEFAULT 0;");
+    } catch {}
+    try {
+      this.db.run("CREATE INDEX IF NOT EXISTS idx_processed_order_id ON processed_jobs (order_id);");
+    } catch {}
+
     this.persist();
     this.isInitialized = true;
     console.log('[DedupDatabase] SQLite dedup database initialized at:', this.dbFilePath);
@@ -91,19 +102,53 @@ export class DedupDatabase {
     return hasRow;
   }
 
-  public markJobProcessed(jobId: string, checksum: string, status: PrintJobStatus): void {
+  public isFileInOrderProcessed(orderId: string, fileIndex: number): boolean {
+    if (!this.db || !orderId) return false;
+    const stmt = this.db.prepare(
+      "SELECT job_id FROM processed_jobs WHERE order_id = :order_id AND file_index = :file_index AND status = 'COMPLETED'"
+    );
+    stmt.bind({ ':order_id': orderId, ':file_index': fileIndex });
+    const hasRow = stmt.step();
+    stmt.free();
+    return hasRow;
+  }
+
+  public getCompletedFilesForOrder(orderId: string): string[] {
+    if (!this.db || !orderId) return [];
+    const stmt = this.db.prepare(
+      "SELECT job_id FROM processed_jobs WHERE order_id = :order_id AND status = 'COMPLETED'"
+    );
+    stmt.bind({ ':order_id': orderId });
+    const jobIds: string[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      if (row.job_id) jobIds.push(String(row.job_id));
+    }
+    stmt.free();
+    return jobIds;
+  }
+
+  public markJobProcessed(
+    jobId: string,
+    checksum: string,
+    status: PrintJobStatus,
+    orderId?: string,
+    fileIndex: number = 0
+  ): void {
     if (!this.db) return;
 
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO processed_jobs (job_id, checksum, printed_at, status)
-      VALUES (:job_id, :checksum, :printed_at, :status)
+      INSERT OR REPLACE INTO processed_jobs (job_id, checksum, printed_at, status, order_id, file_index)
+      VALUES (:job_id, :checksum, :printed_at, :status, :order_id, :file_index)
     `);
 
     stmt.run({
       ':job_id': jobId,
-      ':checksum': checksum,
+      ':checksum': checksum || '',
       ':printed_at': Date.now(),
-      ':status': status
+      ':status': status,
+      ':order_id': orderId || null,
+      ':file_index': fileIndex
     });
     stmt.free();
 
@@ -114,20 +159,20 @@ export class DedupDatabase {
     if (!this.db) return [];
 
     const stmt = this.db.prepare(`
-      SELECT job_id, checksum, printed_at, status
+      SELECT job_id, checksum, printed_at, status, order_id, file_index
       FROM processed_jobs
       ORDER BY printed_at DESC
       LIMIT :limit
     `);
     stmt.bind({ ':limit': limit });
 
-    const results: ProcessedJobRecord[] = [];
+    const results: any[] = [];
     while (stmt.step()) {
-      const row = stmt.getAsObject() as unknown as ProcessedJobRecord;
+      const row = stmt.getAsObject();
       results.push(row);
     }
     stmt.free();
-    return results;
+    return results as ProcessedJobRecord[];
   }
 
   private persist(): void {

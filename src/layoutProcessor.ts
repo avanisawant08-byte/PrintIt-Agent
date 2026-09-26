@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { PrintOptions } from './types';
+import { ConfigManager } from './config';
 
 const PAGE_SIZES: Record<string, [number, number]> = {
   A4: [595.28, 841.89],
@@ -33,6 +34,7 @@ export class LayoutProcessor {
    * - Sheet orientation (portrait / landscape)
    * - Target paper size (A4, A3, Letter)
    * - Image conversion to PDF and optional grid repeat (repeat_image_on_grid)
+   * - Odd-page duplex sheet termination (+ blank page) to prevent cross-file sheet bleeding
    *
    * Returns the path to the formatted PDF ready for printing.
    */
@@ -48,10 +50,40 @@ export class LayoutProcessor {
     const pagesPerPaper = Number(options?.pages_per_paper) || 1;
     const isImage = this.isImageFile(inputFilePath);
     const repeatOnGrid = options?.repeat_image_on_grid ?? false;
+    const isDuplex = options?.sides === 'double' || options?.sides === 'duplex';
+
+    // 1. Prepare source PDF Document (convert image if needed)
+    let srcDoc: PDFDocument;
+    if (isImage) {
+      srcDoc = await this.createPdfFromImage(inputFilePath, options);
+    } else {
+      const srcBuffer = fs.readFileSync(inputFilePath);
+      srcDoc = await PDFDocument.load(srcBuffer);
+    }
+
+    const srcPageCount = srcDoc.getPageCount();
+    if (srcPageCount === 0) {
+      throw new Error(`[LayoutProcessor] Source document contains 0 pages: ${inputFilePath}`);
+    }
+
+    // Check if odd duplex padding should be applied to avoid cross-file sheet bleeding
+    let shouldPadDuplex = false;
+    if (isDuplex && srcPageCount % 2 !== 0) {
+      if (options?.pad_odd_duplex !== undefined) {
+        shouldPadDuplex = Boolean(options.pad_odd_duplex);
+      } else {
+        try {
+          const cfg = ConfigManager.getInstance().get();
+          shouldPadDuplex = cfg.padOddDuplexFiles !== false;
+        } catch {
+          shouldPadDuplex = true;
+        }
+      }
+    }
 
     // If it's a PDF and only 1 page per paper without explicit orientation/size override,
-    // we don't need to re-encode unless repeat_image_on_grid was set
-    if (!isImage && pagesPerPaper === 1 && !options?.size && !options?.orientation) {
+    // and does not require duplex padding, we don't need to re-encode
+    if (!isImage && pagesPerPaper === 1 && !options?.size && !options?.orientation && !shouldPadDuplex) {
       return { outputPath: inputFilePath, isTransformed: false };
     }
 
@@ -69,22 +101,21 @@ export class LayoutProcessor {
       throw new Error(`Path traversal attempt detected during layout transformation`);
     }
 
-    // 1. Prepare source PDF Document (convert image if needed)
-    let srcDoc: PDFDocument;
-    if (isImage) {
-      srcDoc = await this.createPdfFromImage(inputFilePath, options);
-    } else {
-      const srcBuffer = fs.readFileSync(inputFilePath);
-      srcDoc = await PDFDocument.load(srcBuffer);
-    }
-
-    const srcPageCount = srcDoc.getPageCount();
-    if (srcPageCount === 0) {
-      throw new Error(`[LayoutProcessor] Source document contains 0 pages: ${inputFilePath}`);
-    }
-
     // 2. If pagesPerPaper === 1 and not an image needing re-tiling:
     if (pagesPerPaper === 1) {
+      // If only odd duplex padding is needed without other overrides on native PDF:
+      if (!isImage && !options?.size && !options?.orientation && shouldPadDuplex) {
+        const lastPage = srcDoc.getPage(srcPageCount - 1);
+        const { width, height } = lastPage.getSize();
+        srcDoc.addPage([width, height]);
+        const transformedPdfBytes = await srcDoc.save();
+        fs.writeFileSync(outputPath, transformedPdfBytes);
+        console.log(
+          `[LayoutProcessor] Appended blank sheet terminator for duplex printing (Pages: ${srcPageCount} -> ${srcDoc.getPageCount()}): ${outputPath}`
+        );
+        return { outputPath, isTransformed: true };
+      }
+
       // If paper size or orientation was requested, fit page onto target sheet
       const transformedPdfBytes = await this.renderSinglePageSheets(srcDoc, options);
       fs.writeFileSync(outputPath, transformedPdfBytes);
@@ -189,6 +220,7 @@ export class LayoutProcessor {
       }
     }
 
+    this.padOddDuplex(destDoc, sheetWidth, sheetHeight, options);
     return destDoc.save();
   }
 
@@ -229,7 +261,44 @@ export class LayoutProcessor {
       });
     }
 
+    this.padOddDuplex(destDoc, sheetWidth, sheetHeight, options);
     return destDoc.save();
+  }
+
+  /**
+   * Appends an empty page to odd-page documents when duplex printing is requested.
+   * This guarantees that the final physical sheet has a blank back side and is ejected
+   * before any subsequent print job begins, eliminating cross-file page bleed-through.
+   */
+  private padOddDuplex(
+    doc: PDFDocument,
+    width: number,
+    height: number,
+    options?: PrintOptions | null
+  ): boolean {
+    const isDuplex = options?.sides === 'double' || options?.sides === 'duplex';
+    if (!isDuplex) return false;
+
+    let shouldPad = true;
+    if (options?.pad_odd_duplex !== undefined) {
+      shouldPad = Boolean(options.pad_odd_duplex);
+    } else {
+      try {
+        const cfg = ConfigManager.getInstance().get();
+        shouldPad = cfg.padOddDuplexFiles !== false;
+      } catch {
+        shouldPad = true;
+      }
+    }
+
+    if (shouldPad && doc.getPageCount() % 2 !== 0) {
+      doc.addPage([width, height]);
+      console.log(
+        `[LayoutProcessor] Appended blank sheet terminator for duplex printing (Total pages: ${doc.getPageCount()})`
+      );
+      return true;
+    }
+    return false;
   }
 
   /**

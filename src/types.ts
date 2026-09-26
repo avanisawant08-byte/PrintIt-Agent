@@ -29,7 +29,9 @@ export interface PrintJob {
   retry_count: number;
   is_secure?: boolean;
   file_deleted?: boolean;
-  file_deleted_at?: string | null;
+  file_index?: number;
+  total_files?: number;
+  batch_id?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -53,6 +55,10 @@ export interface AgentConfig {
   backendApiUrl?: string;
   autoStartOnBoot: boolean;
   heartbeatIntervalSec: number;
+  enableBatchJobIsolation?: boolean;
+  padOddDuplexFiles?: boolean;
+  haltBatchOnFailure?: boolean;
+  spoolerInterJobDelayMs?: number;
 }
 
 export interface PrinterDevice {

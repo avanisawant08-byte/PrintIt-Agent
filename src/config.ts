@@ -18,7 +18,11 @@ const DEFAULT_CONFIG: AgentConfig = {
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jYXNhdGVvb29qemR4eXhzemZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNTY3NjcsImV4cCI6MjA5MzYzMjc2N30.Inq_6jnWP-6KlNWu6IPE-pBI5MHgJ3p4ndIRm1m3E2I',
   backendApiUrl: process.env.BACKEND_API_URL || 'http://localhost:3000',
   autoStartOnBoot: true,
-  heartbeatIntervalSec: Number(process.env.HEARTBEAT_INTERVAL_SEC) || 30
+  heartbeatIntervalSec: Number(process.env.HEARTBEAT_INTERVAL_SEC) || 30,
+  enableBatchJobIsolation: true,
+  padOddDuplexFiles: true,
+  haltBatchOnFailure: false,
+  spoolerInterJobDelayMs: 800
 };
 
 export class ConfigManager {

@@ -393,16 +393,23 @@ export class RealtimeManager {
       const effectiveCopies = Math.min(100, Math.max(1, Number(effectiveOptions?.copies || job.copies || 1)));
       await this.printerService.printPdf(printableFilePath, printerName, effectiveCopies, effectiveOptions);
 
-      // 6. Record success in local SQLite dedup database
-      this.dedupDb.markJobProcessed(job.id, downloadResult.checksum, 'COMPLETED');
+      // 6. Record success in local SQLite dedup database with order and file index
+      const fileIndex = Number(job.file_index ?? (job.print_options as any)?.file_index ?? 0);
+      this.dedupDb.markJobProcessed(
+        job.id,
+        downloadResult.checksum,
+        'COMPLETED',
+        job.order_id,
+        fileIndex
+      );
 
       // 7. Update status in Supabase to COMPLETED
       await this.supabaseService.updateJobStatus(job.id, 'COMPLETED');
-      logger.info('RealtimeManager', `Job ${job.id} printed successfully!`);
+      logger.info('RealtimeManager', `Job ${job.id} (Order: ${job.order_id}, File: ${fileIndex + 1}) printed successfully!`);
 
     } catch (err: any) {
       const errorMessage = err?.message || String(err);
-      logger.error('RealtimeManager', `Error executing job ${job.id}: ${errorMessage}`);
+      logger.error('RealtimeManager', `Error executing job ${job.id} (Order: ${job.order_id}): ${errorMessage}`);
 
       const nextRetryCount = (job.retry_count || 0) + 1;
       const isMaxRetriesReached = nextRetryCount >= 5;
@@ -411,8 +418,28 @@ export class RealtimeManager {
         : errorMessage;
 
       // Record failure locally and remotely with incremented retry count
-      this.dedupDb.markJobProcessed(job.id, job.checksum || '', 'FAILED');
+      const fileIndex = Number(job.file_index ?? (job.print_options as any)?.file_index ?? 0);
+      this.dedupDb.markJobProcessed(job.id, job.checksum || '', 'FAILED', job.order_id, fileIndex);
       await this.supabaseService.updateJobStatus(job.id, 'FAILED', finalErrorMessage, nextRetryCount);
+
+      // Check partial-batch failure policy (PRD Section 5.3 & Open Question 2)
+      if (config.haltBatchOnFailure) {
+        const remainingForOrder = this.queue.filter((j) => j.order_id === job.order_id);
+        if (remainingForOrder.length > 0) {
+          logger.warn(
+            'RealtimeManager',
+            `Halting batch for order ${job.order_id} due to failure on job ${job.id}. Purging ${remainingForOrder.length} pending file(s).`
+          );
+          this.queue = this.queue.filter((j) => j.order_id !== job.order_id);
+          for (const rem of remainingForOrder) {
+            await this.supabaseService.updateJobStatus(
+              rem.id,
+              'FAILED',
+              `Batch halted: previous file failed (${errorMessage})`
+            );
+          }
+        }
+      }
     } finally {
       // Privacy-by-Default: Guaranteed cleanup & existence verification for EVERY job
       if (transformedFilePath && fs.existsSync(transformedFilePath)) {
@@ -432,5 +459,18 @@ export class RealtimeManager {
       this.currentlyProcessingJobId = null;
       this.heartbeatService.setStatus('READY');
     }
+  }
+
+  /**
+   * Cancels all queued in-flight files for a given order batch (PRD Open Question 4).
+   * Returns the count of cancelled jobs purged from queue.
+   */
+  public cancelOrderBatch(orderId: string): number {
+    const matching = this.queue.filter((j) => j.order_id === orderId);
+    this.queue = this.queue.filter((j) => j.order_id !== orderId);
+    console.log(
+      `[RealtimeManager] Cancelled batch for order ${orderId}: purged ${matching.length} pending file(s).`
+    );
+    return matching.length;
   }
 }

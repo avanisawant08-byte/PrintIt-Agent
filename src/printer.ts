@@ -137,11 +137,30 @@ export class PrinterService {
     return list;
   }
 
+  private spoolerChain: Promise<any> = Promise.resolve();
+
   /**
-   * Silently prints a PDF file using SumatraPDF under the hood,
-   * or routes to virtual disk output if Virtual Test Printer is selected.
+   * ARCHITECTURAL RULE (PRD Section 5.4 — Job-Boundary Integrity):
+   * Every file in a multi-file batch MUST be submitted as its own independent OS-level
+   * print job to the Windows Print Spooler. Files must never be concatenated into a single job.
+   *
+   * The Sequential Completion Gate enforces that file k+1 is not dispatched until file k
+   * has been completely accepted by the spooler/driver, followed by a settling delay to ensure
+   * the physical printer hardware finishes cycling before the next job starts.
    */
   public async printPdf(
+    filePath: string,
+    printerName?: string,
+    copies: number = 1,
+    printOptions?: PrintOptions | null
+  ): Promise<{ savedPath?: string }> {
+    const task = () => this.executePrintPdf(filePath, printerName, copies, printOptions);
+    const resultPromise = this.spoolerChain.then(task, task);
+    this.spoolerChain = resultPromise.catch(() => {});
+    return resultPromise;
+  }
+
+  private async executePrintPdf(
     filePath: string,
     printerName?: string,
     copies: number = 1,
@@ -152,22 +171,35 @@ export class PrinterService {
       `[PrinterService] Target printer: ${printerName || 'SYSTEM DEFAULT'}, Copies: ${copies}, Options: ${JSON.stringify(printOptions || {})}`
     );
 
+    let result: { savedPath?: string } = {};
+
     // Hardware-free Virtual Printer Mode (including Microsoft Print to PDF which cannot print silently via GDI without blanking)
     if (printerName === VIRTUAL_PRINTER_NAME || (printerName && printerName.toLowerCase().includes('print to pdf'))) {
-      return this.printToVirtualDisk(filePath, copies);
+      result = await this.printToVirtualDisk(filePath, copies);
+    } else {
+      const options = this.buildDriverOptions(printerName, copies, printOptions);
+      try {
+        await print(filePath, options);
+        console.log(`[PrinterService] Print job spooled successfully to: ${printerName || 'SYSTEM DEFAULT'}`);
+        result = {};
+      } catch (err: any) {
+        const errorMsg = err?.message || String(err);
+        console.error(`[PrinterService] Failed to print document silently:`, errorMsg);
+        throw new Error(`Silent print failed on printer "${printerName || 'DEFAULT'}": ${errorMsg}`);
+      }
     }
 
-    const options = this.buildDriverOptions(printerName, copies, printOptions);
-
+    // Inter-job settling delay: allows the Windows Print Spooler (spoolsv.exe)
+    // and printer driver mechanism to commit EndDoc and allocate a distinct OS Job ID
     try {
-      await print(filePath, options);
-      console.log(`[PrinterService] Print job spooled successfully to: ${printerName || 'SYSTEM DEFAULT'}`);
-      return {};
-    } catch (err: any) {
-      const errorMsg = err?.message || String(err);
-      console.error(`[PrinterService] Failed to print document silently:`, errorMsg);
-      throw new Error(`Silent print failed on printer "${printerName || 'DEFAULT'}": ${errorMsg}`);
-    }
+      const { ConfigManager } = await import('./config');
+      const delayMs = ConfigManager.getInstance().get().spoolerInterJobDelayMs ?? 800;
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    } catch {}
+
+    return result;
   }
 
   private async printToVirtualDisk(filePath: string, copies: number): Promise<{ savedPath: string }> {
