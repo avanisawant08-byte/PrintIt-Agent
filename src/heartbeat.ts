@@ -70,7 +70,10 @@ export class HeartbeatService {
         config.deviceId,
         'OFFLINE',
         config.selectedPrinter,
-        this.getAgentVersion()
+        this.getAgentVersion(),
+        undefined,
+        config.selectedPrinterBw,
+        config.selectedPrinterColor
       );
     }
   }
@@ -81,10 +84,6 @@ export class HeartbeatService {
 
     try {
       const printers = await PrinterService.getInstance().getAvailablePrinters();
-      const printerList = printers.map((p) => ({
-        name: p.name,
-        isDefault: p.isDefault
-      }));
 
       // If no printer selected yet, and printers exist, select default
       let activePrinter = config.selectedPrinter;
@@ -94,12 +93,24 @@ export class HeartbeatService {
         this.configManager.set({ selectedPrinter: activePrinter });
       }
 
+      const bwPrinter = config.selectedPrinterBw || activePrinter;
+      const colorPrinter = config.selectedPrinterColor || activePrinter;
+
+      const printerList = printers.map((p) => ({
+        name: p.name,
+        isDefault: p.isDefault,
+        isBwDefault: p.name === bwPrinter,
+        isColorDefault: p.name === colorPrinter
+      }));
+
       await this.supabaseService.updateDeviceHeartbeat(
         config.deviceId,
         this.currentStatus,
         activePrinter,
         this.getAgentVersion(),
-        printerList
+        printerList,
+        config.selectedPrinterBw,
+        config.selectedPrinterColor
       );
     } catch (err) {
       console.warn('[HeartbeatService] Error dispatching heartbeat:', err);

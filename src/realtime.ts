@@ -109,15 +109,43 @@ export class RealtimeManager {
         },
         async (payload) => {
           const updatedDevice = payload.new as any;
+          if (!updatedDevice) return;
+
+          const currentConfig = this.configManager.get();
+          const updates: any = {};
+
           if (
-            updatedDevice &&
             updatedDevice.selected_printer &&
-            updatedDevice.selected_printer !== this.configManager.get().selectedPrinter
+            updatedDevice.selected_printer !== currentConfig.selectedPrinter
           ) {
             console.log(
               `[RealtimeManager] Remote printer change from Webapp: "${updatedDevice.selected_printer}"`
             );
-            this.configManager.set({ selectedPrinter: updatedDevice.selected_printer });
+            updates.selectedPrinter = updatedDevice.selected_printer;
+          }
+
+          if (
+            updatedDevice.selected_printer_bw !== undefined &&
+            updatedDevice.selected_printer_bw !== currentConfig.selectedPrinterBw
+          ) {
+            console.log(
+              `[RealtimeManager] Remote B&W printer change from Webapp: "${updatedDevice.selected_printer_bw}"`
+            );
+            updates.selectedPrinterBw = updatedDevice.selected_printer_bw || undefined;
+          }
+
+          if (
+            updatedDevice.selected_printer_color !== undefined &&
+            updatedDevice.selected_printer_color !== currentConfig.selectedPrinterColor
+          ) {
+            console.log(
+              `[RealtimeManager] Remote Color printer change from Webapp: "${updatedDevice.selected_printer_color}"`
+            );
+            updates.selectedPrinterColor = updatedDevice.selected_printer_color || undefined;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            this.configManager.set(updates);
             try {
               const { TrayManager } = await import('./tray');
               await TrayManager.getInstance().updateMenu();
@@ -187,21 +215,31 @@ export class RealtimeManager {
         if (client) {
           const { data: dev } = await client
             .from('agent_devices')
-            .select('selected_printer')
+            .select('selected_printer, selected_printer_bw, selected_printer_color')
             .eq('id', config.deviceId)
             .maybeSingle();
 
-          if (
-            dev &&
-            dev.selected_printer &&
-            dev.selected_printer !== config.selectedPrinter
-          ) {
-            console.log(
-              `[RealtimeManager] Synced selected_printer from cloud: "${dev.selected_printer}"`
-            );
-            this.configManager.set({ selectedPrinter: dev.selected_printer });
-            const { TrayManager } = await import('./tray');
-            await TrayManager.getInstance().updateMenu();
+          if (dev) {
+            const updates: any = {};
+            if (dev.selected_printer && dev.selected_printer !== config.selectedPrinter) {
+              updates.selectedPrinter = dev.selected_printer;
+            }
+            if (dev.selected_printer_bw !== undefined && dev.selected_printer_bw !== config.selectedPrinterBw) {
+              updates.selectedPrinterBw = dev.selected_printer_bw || undefined;
+            }
+            if (dev.selected_printer_color !== undefined && dev.selected_printer_color !== config.selectedPrinterColor) {
+              updates.selectedPrinterColor = dev.selected_printer_color || undefined;
+            }
+
+            if (Object.keys(updates).length > 0) {
+              console.log(
+                '[RealtimeManager] Synced printer configurations from cloud:',
+                updates
+              );
+              this.configManager.set(updates);
+              const { TrayManager } = await import('./tray');
+              await TrayManager.getInstance().updateMenu();
+            }
           }
         }
       } catch (devErr) {

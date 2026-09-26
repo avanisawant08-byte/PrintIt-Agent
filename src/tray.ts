@@ -70,19 +70,27 @@ export class TrayManager {
       this.configManager.set({ selectedPrinter: def.name });
     }
 
-    // 2. Build dynamic Printer Selection Submenu
-    const printerSubmenu: MenuItemConstructorOptions[] = printers.length > 0
-      ? printers.map((printer) => ({
-          label: `${printer.name}${printer.isDefault ? ' (Default)' : ''}`,
-          type: 'radio',
-          checked: currentPrinter ? printer.name === currentPrinter : Boolean(printer.isDefault),
-          click: () => {
-            console.log(`[TrayManager] Selected printer changed to: ${printer.name}`);
-            this.configManager.set({ selectedPrinter: printer.name });
-            this.updateMenu();
-          }
-        }))
-      : [{ label: 'No printers detected', enabled: false }];
+    const currentBw = config.selectedPrinterBw || currentPrinter;
+    const currentColor = config.selectedPrinterColor || currentPrinter;
+
+    // 2. Helper to build dynamic Printer Selection Submenus
+    const buildPrinterSubmenu = (
+      currentVal: string | undefined,
+      onSelect: (name: string) => void
+    ): MenuItemConstructorOptions[] => {
+      if (printers.length === 0) {
+        return [{ label: 'No printers detected', enabled: false }];
+      }
+      return printers.map((printer) => ({
+        label: `${printer.name}${printer.isDefault ? ' (OS Default)' : ''}`,
+        type: 'radio',
+        checked: currentVal ? printer.name === currentVal : Boolean(printer.isDefault),
+        click: () => {
+          onSelect(printer.name);
+          this.updateMenu();
+        }
+      }));
+    };
 
     // 3. Build Tray Menu Items
     const template: MenuItemConstructorOptions[] = [
@@ -107,8 +115,25 @@ export class TrayManager {
       },
       { type: 'separator' },
       {
-        label: 'Select Printer',
-        submenu: printerSubmenu
+        label: `⚫ Default B&W: ${currentBw ? currentBw.slice(0, 20) : 'Auto'}`,
+        submenu: buildPrinterSubmenu(currentBw, (name) => {
+          console.log(`[TrayManager] Selected B&W printer: ${name}`);
+          this.configManager.set({ selectedPrinterBw: name });
+        })
+      },
+      {
+        label: `🎨 Default Color: ${currentColor ? currentColor.slice(0, 20) : 'Auto'}`,
+        submenu: buildPrinterSubmenu(currentColor, (name) => {
+          console.log(`[TrayManager] Selected Color printer: ${name}`);
+          this.configManager.set({ selectedPrinterColor: name });
+        })
+      },
+      {
+        label: `🖨️ General Fallback: ${currentPrinter ? currentPrinter.slice(0, 20) : 'Auto'}`,
+        submenu: buildPrinterSubmenu(currentPrinter, (name) => {
+          console.log(`[TrayManager] Selected fallback printer: ${name}`);
+          this.configManager.set({ selectedPrinter: name });
+        })
       },
       {
         label: 'Test Print Page',

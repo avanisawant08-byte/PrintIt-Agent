@@ -163,7 +163,9 @@ export class SupabaseService {
     status: 'ONLINE' | 'OFFLINE' | 'PRINTING' | 'READY',
     selectedPrinter?: string,
     agentVersion: string = '1.0.0',
-    availablePrinters?: any[]
+    availablePrinters?: any[],
+    selectedPrinterBw?: string,
+    selectedPrinterColor?: string
   ): Promise<boolean> {
     const client = this.getClient();
     if (!client || !deviceId) return false;
@@ -174,6 +176,8 @@ export class SupabaseService {
       const payload: any = {
         status: dbStatus,
         selected_printer: selectedPrinter || null,
+        selected_printer_bw: selectedPrinterBw || null,
+        selected_printer_color: selectedPrinterColor || null,
         agent_version: agentVersion,
         last_seen_at: new Date().toISOString()
       };
