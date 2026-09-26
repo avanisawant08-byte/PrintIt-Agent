@@ -150,6 +150,8 @@ export class DashboardManager {
         deviceId: config.deviceId,
         deviceName: config.deviceName,
         selectedPrinter: config.selectedPrinter,
+        selectedPrinterBw: config.selectedPrinterBw,
+        selectedPrinterColor: config.selectedPrinterColor,
         autoStartOnBoot: config.autoStartOnBoot !== false,
         isPaired: this.configManager.isPaired()
       };
@@ -164,7 +166,17 @@ export class DashboardManager {
     });
 
     ipcMain.handle('dashboard:select-printer', async (_event, printerName: string) => {
-      this.configManager.set({ selectedPrinter: printerName });
+      this.configManager.set({ selectedPrinter: printerName || undefined });
+      return true;
+    });
+
+    ipcMain.handle('dashboard:select-printer-bw', async (_event, printerName: string) => {
+      this.configManager.set({ selectedPrinterBw: printerName || undefined });
+      return true;
+    });
+
+    ipcMain.handle('dashboard:select-printer-color', async (_event, printerName: string) => {
+      this.configManager.set({ selectedPrinterColor: printerName || undefined });
       return true;
     });
 

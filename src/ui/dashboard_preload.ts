@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('dashboardApi', {
   getStatus: () => ipcRenderer.invoke('dashboard:get-status'),
   getPrinters: () => ipcRenderer.invoke('dashboard:get-printers'),
   selectPrinter: (printerName: string) => ipcRenderer.invoke('dashboard:select-printer', printerName),
+  selectPrinterBw: (printerName: string) => ipcRenderer.invoke('dashboard:select-printer-bw', printerName),
+  selectPrinterColor: (printerName: string) => ipcRenderer.invoke('dashboard:select-printer-color', printerName),
   testPrint: () => ipcRenderer.invoke('dashboard:test-print'),
   getRecentJobs: () => ipcRenderer.invoke('dashboard:get-recent-jobs'),
   openSecureFolder: () => ipcRenderer.invoke('dashboard:open-secure-folder'),

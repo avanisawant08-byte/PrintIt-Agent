@@ -102,22 +102,52 @@
         <div class="card-header flex-between">
           <div class="header-left">
             <span class="card-icon">🖨️</span>
-            <h3>Active Printer Routing</h3>
+            <h3>Default Printer Routing</h3>
           </div>
           <button id="refresh-printers-btn" class="btn-secondary btn-sm" title="Refresh Windows printers">
             🔄 Refresh
           </button>
         </div>
         <div class="card-body">
-          <p class="desc-text">Select which physical or virtual printer this agent dispatches incoming shop print jobs to:</p>
+          <p class="desc-text">Configure default hardware routing for customer orders. Incoming jobs auto-switch based on color requirements:</p>
+          
+          <div class="printer-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0 14px 0;">
+            <div class="printer-field">
+              <label for="printer-select-bw" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                <span>⚫</span>
+                <span>Default Black & White (B&W) Printer:</span>
+              </label>
+              <select id="printer-select-bw" class="printer-dropdown" style="width: 100%;">
+                <option value="">Detecting printers...</option>
+              </select>
+            </div>
+            <div class="printer-field">
+              <label for="printer-select-color" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                <span>🎨</span>
+                <span>Default Color Printer:</span>
+              </label>
+              <select id="printer-select-color" class="printer-dropdown" style="width: 100%;">
+                <option value="">Detecting printers...</option>
+              </select>
+            </div>
+          </div>
+
           <div class="printer-selector-row">
-            <select id="printer-select" class="printer-dropdown">
-              <option value="">Detecting printers...</option>
-            </select>
-            <button id="test-print-btn" class="btn-primary">
-              <span class="btn-icon">📄</span>
-              <span>Send Test Print</span>
-            </button>
+            <div style="flex: 1;">
+              <label for="printer-select" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                <span>🖨️</span>
+                <span>General Fallback Printer:</span>
+              </label>
+              <select id="printer-select" class="printer-dropdown" style="width: 100%;">
+                <option value="">Detecting printers...</option>
+              </select>
+            </div>
+            <div style="align-self: flex-end;">
+              <button id="test-print-btn" class="btn-primary">
+                <span class="btn-icon">📄</span>
+                <span>Send Test Print</span>
+              </button>
+            </div>
           </div>
           <div id="test-print-feedback" class="feedback-msg"></div>
         </div>

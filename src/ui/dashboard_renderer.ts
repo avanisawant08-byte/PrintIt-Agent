@@ -6,10 +6,14 @@ interface Window {
       deviceId: string;
       deviceName: string;
       selectedPrinter?: string;
+      selectedPrinterBw?: string;
+      selectedPrinterColor?: string;
       isPaired: boolean;
     }>;
     getPrinters: () => Promise<Array<{ name: string; isDefault: boolean }>>;
     selectPrinter: (name: string) => Promise<boolean>;
+    selectPrinterBw: (name: string) => Promise<boolean>;
+    selectPrinterColor: (name: string) => Promise<boolean>;
     testPrint: () => Promise<{ success: boolean; savedPath?: string; error?: string }>;
     getRecentJobs: () => Promise<Array<{ job_id: string; printed_at: string; status: string }>>;
     openSecureFolder: () => Promise<boolean>;
@@ -25,6 +29,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shopIdVal = document.getElementById('shop-id-val') as HTMLElement;
   const stationNameVal = document.getElementById('station-name-val') as HTMLElement;
   const printerSelect = document.getElementById('printer-select') as HTMLSelectElement;
+  const printerSelectBw = document.getElementById('printer-select-bw') as HTMLSelectElement;
+  const printerSelectColor = document.getElementById('printer-select-color') as HTMLSelectElement;
   const refreshPrintersBtn = document.getElementById('refresh-printers-btn') as HTMLButtonElement;
   const testPrintBtn = document.getElementById('test-print-btn') as HTMLButtonElement;
   const testPrintFeedback = document.getElementById('test-print-feedback') as HTMLElement;
@@ -55,27 +61,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.dashboardApi.getStatus()
       ]);
 
-      printerSelect.innerHTML = '';
+      const populateSelect = (selectEl: HTMLSelectElement, selectedVal?: string) => {
+        if (!selectEl) return;
+        selectEl.innerHTML = '';
 
-      if (!printers || printers.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'No printers detected';
-        printerSelect.appendChild(opt);
-        return;
-      }
-
-      printers.forEach((p) => {
-        const opt = document.createElement('option');
-        opt.value = p.name;
-        opt.textContent = `${p.name}${p.isDefault ? ' (Default)' : ''}`;
-        if (status.selectedPrinter && status.selectedPrinter === p.name) {
-          opt.selected = true;
-        } else if (!status.selectedPrinter && p.isDefault) {
-          opt.selected = true;
+        if (!printers || printers.length === 0) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No printers detected';
+          selectEl.appendChild(opt);
+          return;
         }
-        printerSelect.appendChild(opt);
-      });
+
+        printers.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.textContent = `${p.name}${p.isDefault ? ' (OS Default)' : ''}`;
+          if (selectedVal && selectedVal === p.name) {
+            opt.selected = true;
+          } else if (!selectedVal && p.isDefault) {
+            opt.selected = true;
+          }
+          selectEl.appendChild(opt);
+        });
+      };
+
+      populateSelect(printerSelect, status.selectedPrinter);
+      populateSelect(printerSelectBw, status.selectedPrinterBw || status.selectedPrinter);
+      populateSelect(printerSelectColor, status.selectedPrinterColor || status.selectedPrinter);
     } catch (err) {
       console.error('Failed to load printers:', err);
     }
@@ -113,26 +126,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Handle printer selection change
-  printerSelect.addEventListener('change', async () => {
-    const selected = printerSelect.value;
-    if (selected) {
-      await window.dashboardApi.selectPrinter(selected);
-      testPrintFeedback.textContent = `Active printer set to: ${selected}`;
-      testPrintFeedback.className = 'feedback-msg success';
-      setTimeout(() => {
+  // Handle printer selection changes
+  if (printerSelect) {
+    printerSelect.addEventListener('change', async () => {
+      const selected = printerSelect.value;
+      if (selected) {
+        await window.dashboardApi.selectPrinter(selected);
+        showFeedback(`General fallback printer set to: ${selected}`);
+      }
+    });
+  }
+
+  if (printerSelectBw) {
+    printerSelectBw.addEventListener('change', async () => {
+      const selected = printerSelectBw.value;
+      if (selected) {
+        await window.dashboardApi.selectPrinterBw(selected);
+        showFeedback(`Default B&W printer set to: ${selected}`);
+      }
+    });
+  }
+
+  if (printerSelectColor) {
+    printerSelectColor.addEventListener('change', async () => {
+      const selected = printerSelectColor.value;
+      if (selected) {
+        await window.dashboardApi.selectPrinterColor(selected);
+        showFeedback(`Default Color printer set to: ${selected}`);
+      }
+    });
+  }
+
+  function showFeedback(msg: string, isError = false) {
+    if (!testPrintFeedback) return;
+    testPrintFeedback.textContent = msg;
+    testPrintFeedback.className = isError ? 'feedback-msg error' : 'feedback-msg success';
+    setTimeout(() => {
+      if (testPrintFeedback.textContent === msg) {
         testPrintFeedback.textContent = '';
-      }, 4000);
-    }
-  });
+      }
+    }, 4000);
+  }
 
   refreshPrintersBtn.addEventListener('click', async () => {
     await loadPrinters();
-    testPrintFeedback.textContent = 'Printers list refreshed!';
-    testPrintFeedback.className = 'feedback-msg success';
-    setTimeout(() => {
-      testPrintFeedback.textContent = '';
-    }, 2500);
+    showFeedback('Printers list refreshed!');
   });
 
   // Handle Test Print
