@@ -14,6 +14,8 @@ export interface PrintOptions {
   page_range?: string;
   pages?: string;
   pad_odd_duplex?: boolean;
+  multi_file_grid?: boolean;
+  file_urls?: string[];
   [key: string]: any;
 }
 
@@ -94,5 +96,6 @@ export interface ReprintJob {
   order_id: string;
   file_index: number;
   storage_path: string;
+  storage_paths?: string[];
   print_options: ReprintPrintOptions;
 }

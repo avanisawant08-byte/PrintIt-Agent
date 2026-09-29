@@ -28,6 +28,7 @@
     "dotenv": "^16.4.7",
     "pdf-lib": "^1.17.1",
     "pdf-to-printer": "^5.8.1",
+    "pg": "^8.23.0",
     "sql.js": "^1.14.2"
   },
   "devDependencies": {

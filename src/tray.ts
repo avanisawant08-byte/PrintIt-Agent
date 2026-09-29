@@ -135,11 +135,7 @@ export class TrayManager {
           this.configManager.set({ selectedPrinter: name });
         })
       },
-      {
-        label: 'Test Print Page',
-        enabled: printers.length > 0,
-        click: () => this.handleTestPrint()
-      },
+
       {
         label: 'View Recent Prints',
         click: () => this.showRecentPrints()
@@ -200,42 +196,6 @@ export class TrayManager {
     this.tray.setContextMenu(contextMenu);
   }
 
-  private async handleTestPrint(): Promise<void> {
-    const config = this.configManager.get();
-    const targetPrinter = config.selectedPrinter;
-
-    try {
-      // Create a rich diagnostic test PDF
-      const testPdfPath = path.join(app.getPath('temp'), 'printit-test-slip.pdf');
-      const { generateTestPagePdf } = await import('./testPageGenerator');
-      await generateTestPagePdf(testPdfPath, {
-        shopName: config.shopName,
-        shopId: config.shopId,
-        deviceName: config.deviceName,
-        printerName: targetPrinter,
-        version: app.getVersion()
-      });
-
-      const result = await this.printerService.printPdf(testPdfPath, targetPrinter, 1);
-      
-      if (result && result.savedPath) {
-        shell.showItemInFolder(result.savedPath);
-        dialog.showMessageBox({
-          type: 'info',
-          title: 'PrintIt Test Print (Virtual Mode)',
-          message: `Virtual test print generated successfully!\n\nFile saved to:\n${result.savedPath}\n\n(Revealed in File Explorer)`
-        });
-      } else {
-        dialog.showMessageBox({
-          type: 'info',
-          title: 'PrintIt Test Print',
-          message: `Test print dispatched successfully to printer:\n${targetPrinter || 'Default Printer'}`
-        });
-      }
-    } catch (err: any) {
-      dialog.showErrorBox('Test Print Failed', err?.message || 'Could not print test document.');
-    }
-  }
 
   private showRecentPrints(): void {
     const recent = this.dedupDb.getRecentJobs(10);

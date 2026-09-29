@@ -180,33 +180,7 @@ export class DashboardManager {
       return true;
     });
 
-    ipcMain.handle('dashboard:test-print', async () => {
-      const config = this.configManager.get();
-      const targetPrinter = config.selectedPrinter;
 
-      try {
-        const testPdfPath = path.join(app.getPath('temp'), 'printit-test-slip.pdf');
-        const { generateTestPagePdf } = await import('./testPageGenerator');
-        await generateTestPagePdf(testPdfPath, {
-          shopName: config.shopName,
-          shopId: config.shopId,
-          deviceName: config.deviceName,
-          printerName: targetPrinter,
-          version: app.getVersion()
-        });
-
-        const result = await this.printerService.printPdf(testPdfPath, targetPrinter, 1);
-
-        if (result && result.savedPath) {
-          shell.showItemInFolder(result.savedPath);
-          return { success: true, savedPath: result.savedPath };
-        }
-
-        return { success: true };
-      } catch (err: any) {
-        return { success: false, error: err?.message || 'Print dispatch failed' };
-      }
-    });
 
     ipcMain.handle('dashboard:get-recent-jobs', async () => {
       return this.dedupDb.getRecentJobs(10);

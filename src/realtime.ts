@@ -342,6 +342,7 @@ export class RealtimeManager {
     let downloadedFilePath: string | null = null;
     let subsetFilePath: string | null = null;
     let transformedFilePath: string | null = null;
+    let extraDownloadedFiles: string[] = [];
 
     try {
       // 1. Download file stream directly to isolated per-job directory & verify checksum
@@ -401,16 +402,44 @@ export class RealtimeManager {
         }
       }
 
-      // 3. Format document according to user layout (e.g. 4 pages on a sheet, orientation, repeat)
+      // 3. Format document according to user layout (e.g. 4 pages on a sheet, orientation, repeat, or multi-file grid)
       const layoutProcessor = LayoutProcessor.getInstance();
-      const layoutResult = await layoutProcessor.process(activePdfPath, effectiveOptions, jobDir);
-
       let printableFilePath = activePdfPath;
-      if (layoutResult.isTransformed) {
+
+      if (effectiveOptions?.multi_file_grid && Array.isArray(effectiveOptions?.file_urls) && effectiveOptions.file_urls.length > 1) {
+        logger.info(
+          'RealtimeManager',
+          `Multi-file grid layout active: Downloading ${effectiveOptions.file_urls.length} files for collation onto sheet grid`
+        );
+        const allPaths: string[] = [activePdfPath];
+        for (let i = 1; i < effectiveOptions.file_urls.length; i++) {
+          const url = effectiveOptions.file_urls[i];
+          try {
+            const extraRes = await this.downloader.downloadAndVerify(
+              `${job.id}_f${i}`,
+              url,
+              '',
+              true
+            );
+            allPaths.push(extraRes.filePath);
+            extraDownloadedFiles.push(extraRes.filePath);
+            SecureTempManager.getInstance().registerActiveFile(extraRes.filePath);
+          } catch (dlErr) {
+            logger.warn('RealtimeManager', `Could not download extra file ${i} in multi-file grid: ${dlErr}`);
+          }
+        }
+        const layoutResult = await layoutProcessor.processMultiFile(allPaths, effectiveOptions, jobDir);
         transformedFilePath = layoutResult.outputPath;
         printableFilePath = layoutResult.outputPath;
-        // Register transformed file with SecureTempManager so crash sweep protects/deletes it
         SecureTempManager.getInstance().registerActiveFile(transformedFilePath);
+      } else {
+        const layoutResult = await layoutProcessor.process(activePdfPath, effectiveOptions, jobDir);
+        if (layoutResult.isTransformed) {
+          transformedFilePath = layoutResult.outputPath;
+          printableFilePath = layoutResult.outputPath;
+          // Register transformed file with SecureTempManager so crash sweep protects/deletes it
+          SecureTempManager.getInstance().registerActiveFile(transformedFilePath);
+        }
       }
 
       // 4. Deterministically resolve target printer (B&W vs Color with physical availability verification)
@@ -491,6 +520,13 @@ export class RealtimeManager {
         await this.downloader.cleanup(downloadedFilePath, true);
         await this.supabaseService.markJobFileDeleted(job.id);
         console.log(`[RealtimeManager] [PRIVACY AUDIT] Job ${job.id} file deletion verified and recorded.`);
+      }
+      for (const extraFile of extraDownloadedFiles) {
+        if (fs.existsSync(extraFile)) {
+          try {
+            await this.downloader.cleanup(extraFile, true);
+          } catch {}
+        }
       }
 
       // Revert agent status to ONLINE and clear in-flight marker

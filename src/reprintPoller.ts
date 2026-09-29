@@ -132,8 +132,13 @@ export class ReprintPoller {
       return;
     }
 
-    // 2. Get signed download URL from backend
+    // 2. Normalize print options & download file(s)
+    const opts = job.print_options || {};
+    const printOptions = this.normalizePrintOptions(opts);
+    const tempFilePaths: string[] = [];
+
     let downloadUrl: string;
+
     try {
       downloadUrl = await this.fetchDownloadUrl(job.storage_path, backendUrl, authToken);
     } catch (err: any) {
@@ -143,39 +148,47 @@ export class ReprintPoller {
       return;
     }
 
-    // 3. Download file to %TEMP%\printit_reprint_<jobId>.<ext>
-    const ext = path.extname(job.storage_path) || '.pdf';
-    const tempFilePath = path.join(os.tmpdir(), `printit_reprint_${job.id}${ext}`);
-    const filename = path.basename(job.storage_path);
+    const rawPaths = (job.storage_paths && job.storage_paths.length > 0)
+      ? job.storage_paths
+      : [job.storage_path];
 
     try {
-      await this.downloadToTemp(downloadUrl, tempFilePath);
+      for (let i = 0; i < rawPaths.length; i++) {
+        const sPath = rawPaths[i];
+        const sUrl = i === 0 ? downloadUrl : await this.fetchDownloadUrl(sPath, backendUrl, authToken);
+        const sExt = path.extname(sPath) || '.pdf';
+        const sTemp = path.join(os.tmpdir(), `printit_reprint_${job.id}_f${i}${sExt}`);
+        await this.downloadToTemp(sUrl, sTemp);
+
+        if (!this.downloader.validateFileSignature(sTemp)) {
+          logger.error('ReprintPoller', `Security: invalid file type for job #${job.id} (file ${i})`);
+          this.safeDelete(sTemp);
+          for (const prev of tempFilePaths) this.safeDelete(prev);
+          this.pushActivityLog(`⚠️ Reprint job #${job.id} rejected — invalid file type`);
+          this.inFlight.delete(job.id);
+          return;
+        }
+        tempFilePaths.push(sTemp);
+      }
     } catch (err: any) {
       logger.error('ReprintPoller', `Download failed for job #${job.id}: ${err?.message || err}`);
+      for (const prev of tempFilePaths) this.safeDelete(prev);
       this.pushActivityLog(`⚠️ Reprint job #${job.id} failed — download error`);
       this.inFlight.delete(job.id);
       return;
     }
 
-    // 4. Validate file signature (PDF / PNG / JPG) — security hardening
-    if (!this.downloader.validateFileSignature(tempFilePath)) {
-      logger.error('ReprintPoller', `Security: invalid file type for job #${job.id}`);
-      this.safeDelete(tempFilePath);
-      this.pushActivityLog(`⚠️ Reprint job #${job.id} rejected — invalid file type`);
-      this.inFlight.delete(job.id);
-      return;
-    }
 
-    // 5. Resolve target printer & build print options
+    const tempFilePath = tempFilePaths[0];
+
+    // 5. Resolve target printer
     const config = this.configManager.get();
-    const opts = job.print_options || {};
-    const printOptions = this.normalizePrintOptions(opts);
     let printerName: string;
     try {
       printerName = await this.printerService.resolveTargetPrinter(printOptions, config);
     } catch (err: any) {
       logger.error('ReprintPoller', `Printer unavailable for job #${job.id}: ${err?.message || err}`);
-      this.safeDelete(tempFilePath);
+      for (const p of tempFilePaths) this.safeDelete(p);
       this.pushActivityLog(`⚠️ Reprint job #${job.id} failed — printer unavailable`);
       this.inFlight.delete(job.id);
       return;
@@ -184,42 +197,54 @@ export class ReprintPoller {
     // 6. Format document according to user layout (e.g. N-up, image to PDF) & Print silently
     const copies = Math.min(100, Math.max(1, Number(opts.copies ?? 1)));
     const shortOrderId = String(job.order_id).slice(0, 8);
+    const isMultiFile = tempFilePaths.length > 1 && (printOptions.multi_file_grid !== false);
 
     let printableFilePath = tempFilePath;
     let transformedFilePath: string | null = null;
     let subsetFilePath: string | null = null;
 
     try {
-      const pageSelection = printOptions.pages || printOptions.page_range;
-      let activePdfPath = tempFilePath;
       const jobDir = path.dirname(tempFilePath);
-
-      if (pageSelection && config.enableSelectivePagePrinting !== false) {
-        const pageSelector = PageSelector.getInstance();
-        const selectResult = await pageSelector.extractPageSubset(
-          tempFilePath,
-          pageSelection,
-          jobDir
-        );
-        if (selectResult.isExtracted) {
-          subsetFilePath = selectResult.outputPath;
-          activePdfPath = selectResult.outputPath;
-          logger.info(
-            'ReprintPoller',
-            `Selective page extraction for reprint job #${job.id}: ${selectResult.pageCount} page(s) -> ${path.basename(subsetFilePath)}`
-          );
-          printOptions.page_range = undefined;
-          printOptions.pages = undefined;
-        }
-      }
-
       const layoutProcessor = LayoutProcessor.getInstance();
-      const layoutResult = await layoutProcessor.process(activePdfPath, printOptions, jobDir);
-      if (layoutResult.isTransformed) {
+
+      if (isMultiFile) {
+        logger.info(
+          'ReprintPoller',
+          `Collating ${tempFilePaths.length} reprint files onto sheet grid`
+        );
+        const layoutResult = await layoutProcessor.processMultiFile(tempFilePaths, printOptions, jobDir);
         transformedFilePath = layoutResult.outputPath;
         printableFilePath = layoutResult.outputPath;
       } else {
-        printableFilePath = activePdfPath;
+        const pageSelection = printOptions.pages || printOptions.page_range;
+        let activePdfPath = tempFilePath;
+
+        if (pageSelection && config.enableSelectivePagePrinting !== false) {
+          const pageSelector = PageSelector.getInstance();
+          const selectResult = await pageSelector.extractPageSubset(
+            tempFilePath,
+            pageSelection,
+            jobDir
+          );
+          if (selectResult.isExtracted) {
+            subsetFilePath = selectResult.outputPath;
+            activePdfPath = selectResult.outputPath;
+            logger.info(
+              'ReprintPoller',
+              `Selective page extraction for reprint job #${job.id}: ${selectResult.pageCount} page(s) -> ${path.basename(subsetFilePath)}`
+            );
+            printOptions.page_range = undefined;
+            printOptions.pages = undefined;
+          }
+        }
+
+        const layoutResult = await layoutProcessor.process(activePdfPath, printOptions, jobDir);
+        if (layoutResult.isTransformed) {
+          transformedFilePath = layoutResult.outputPath;
+          printableFilePath = layoutResult.outputPath;
+        } else {
+          printableFilePath = activePdfPath;
+        }
       }
 
       await this.printerService.printPdf(printableFilePath, printerName, copies, printOptions);
@@ -229,8 +254,10 @@ export class ReprintPoller {
       logger.error('ReprintPoller', `SumatraPDF/spooler error for job #${job.id}: ${err?.message || err}`);
       this.pushActivityLog(`⚠️ Print spooling may have failed for job #${job.id}`);
     } finally {
-      // 7. Always delete temp file after spooling (privacy-by-default)
-      this.safeDelete(tempFilePath);
+      // 7. Always delete temp files after spooling (privacy-by-default)
+      for (const p of tempFilePaths) {
+        this.safeDelete(p);
+      }
       if (subsetFilePath) {
         this.safeDelete(subsetFilePath);
       }
@@ -343,7 +370,10 @@ export class ReprintPoller {
       pages_per_paper: opts.pages_per_paper,
       orientation: opts.orientation,
       repeat_image_on_grid: opts.repeat_image_on_grid,
-      pad_odd_duplex: opts.pad_odd_duplex
+      pad_odd_duplex: opts.pad_odd_duplex,
+      multi_file_grid: opts.multi_file_grid,
+      file_urls: opts.file_urls,
+      printer_name: opts.printer_name
     };
   }
 

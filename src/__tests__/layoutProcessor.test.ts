@@ -166,3 +166,35 @@ test('LayoutProcessor: bypasses transformation when pages_per_paper is 1 and alr
 
   fs.rmSync(testDir, { recursive: true, force: true });
 });
+
+test('LayoutProcessor: processMultiFile combines 4 separate files onto 1 sheet (4-up)', async () => {
+  const processor = LayoutProcessor.getInstance();
+  const testDir = path.join(__dirname, 'test_scratch_multifile');
+  if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+
+  // Create 4 distinct single-page PDFs
+  const inputPaths: string[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([300, 400]);
+    page.drawText(`File ${i}`);
+    const filePath = path.join(testDir, `file-${i}.pdf`);
+    fs.writeFileSync(filePath, await doc.save());
+    inputPaths.push(filePath);
+  }
+
+  const result = await processor.processMultiFile(inputPaths, {
+    pages_per_paper: 4,
+    size: 'A4',
+    orientation: 'portrait'
+  }, testDir);
+
+  assert.equal(result.isTransformed, true);
+  assert.ok(fs.existsSync(result.outputPath));
+
+  const outDoc = await PDFDocument.load(fs.readFileSync(result.outputPath));
+  // All 4 files combined into exactly 1 sheet!
+  assert.equal(outDoc.getPageCount(), 1);
+
+  fs.rmSync(testDir, { recursive: true, force: true });
+});

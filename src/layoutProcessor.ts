@@ -133,6 +133,80 @@ export class LayoutProcessor {
   }
 
   /**
+   * Processes multiple distinct documents (images or single/multi-page PDFs)
+   * and tiles their pages together onto unified N-up sheets (e.g. 4 photos onto 1 A4 sheet).
+   */
+  public async processMultiFile(
+    inputFilePaths: string[],
+    options?: PrintOptions | null,
+    destinationDir?: string
+  ): Promise<{ outputPath: string; isTransformed: boolean }> {
+    if (!inputFilePaths || inputFilePaths.length === 0) {
+      throw new Error('[LayoutProcessor] No input files provided for multi-file processing');
+    }
+
+    if (inputFilePaths.length === 1) {
+      return this.process(inputFilePaths[0], options, destinationDir);
+    }
+
+    const pagesPerPaper = Number(options?.pages_per_paper) || inputFilePaths.length;
+    console.log(
+      `[LayoutProcessor] Multi-file collation: Combining ${inputFilePaths.length} files onto sheet grid (pages_per_paper: ${pagesPerPaper})`
+    );
+
+    // 1. Create a merged source document containing all pages from each input file in order
+    const combinedDoc = await PDFDocument.create();
+
+    for (const filePath of inputFilePaths) {
+      if (!fs.existsSync(filePath)) {
+        console.warn(`[LayoutProcessor] Multi-file file not found, skipping: ${filePath}`);
+        continue;
+      }
+
+      let subDoc: PDFDocument;
+      if (this.isImageFile(filePath)) {
+        subDoc = await this.createPdfFromImage(filePath, options);
+      } else {
+        const fileBuffer = fs.readFileSync(filePath);
+        subDoc = await PDFDocument.load(fileBuffer);
+      }
+
+      const pageCount = subDoc.getPageCount();
+      if (pageCount > 0) {
+        const copiedPages = await combinedDoc.copyPages(subDoc, subDoc.getPageIndices());
+        for (const p of copiedPages) {
+          combinedDoc.addPage(p);
+        }
+      }
+    }
+
+    if (combinedDoc.getPageCount() === 0) {
+      throw new Error('[LayoutProcessor] Combined multi-file source document contains 0 pages');
+    }
+
+    // Critical: re-serialize to preserve embedded image and font definitions
+    const serializedCombined = await combinedDoc.save();
+    const finalSourceDoc = await PDFDocument.load(serializedCombined);
+
+    const outDir = destinationDir || path.dirname(inputFilePaths[0]);
+    const outputFileName = `layout-multifile-${Date.now()}-${inputFilePaths.length}files.pdf`;
+    const outputPath = path.join(outDir, outputFileName);
+
+    let transformedPdfBytes: Uint8Array;
+    if (pagesPerPaper > 1) {
+      transformedPdfBytes = await this.renderNupSheets(finalSourceDoc, pagesPerPaper, options);
+    } else {
+      transformedPdfBytes = await this.renderSinglePageSheets(finalSourceDoc, options);
+    }
+
+    fs.writeFileSync(outputPath, transformedPdfBytes);
+    console.log(
+      `[LayoutProcessor] Multi-file collation complete: ${inputFilePaths.length} files combined into ${outputPath}`
+    );
+    return { outputPath, isTransformed: true };
+  }
+
+  /**
    * Renders multi-page N-up sheets (e.g. 4 pages per sheet in 2x2 grid)
    */
   private async renderNupSheets(
