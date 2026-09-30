@@ -249,7 +249,19 @@ export class ReprintPoller {
 
       await this.printerService.printPdf(printableFilePath, printerName, copies, printOptions);
       logger.info('ReprintPoller', `Job #${job.id} reprinted successfully (order ${job.order_id})`);
-      this.pushActivityLog(`✅ Reprinted order #${shortOrderId} — ${filename}`);
+      this.pushActivityLog(`✅ Reprinted order #${shortOrderId} — ${path.basename(tempFilePath)}`);
+      try {
+        const { DedupDatabase } = await import('./dedup');
+        DedupDatabase.getInstance().markJobProcessed(
+          String(job.id),
+          '',
+          'COMPLETED',
+          String(job.order_id),
+          job.file_index || 0
+        );
+      } catch (dedupErr) {
+        logger.warn('ReprintPoller', `Failed to record reprint in dedupDb: ${dedupErr}`);
+      }
     } catch (err: any) {
       logger.error('ReprintPoller', `SumatraPDF/spooler error for job #${job.id}: ${err?.message || err}`);
       this.pushActivityLog(`⚠️ Print spooling may have failed for job #${job.id}`);

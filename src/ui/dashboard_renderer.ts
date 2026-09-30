@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         jobsCountBadge.textContent = '0 jobs';
         jobsTableBody.innerHTML = `
           <tr class="empty-row">
-            <td colspan="4">No print jobs processed yet on this station. Ready to receive orders!</td>
+            <td colspan="5">No print jobs processed yet on this station. Ready to receive orders!</td>
           </tr>
         `;
         return;
@@ -111,13 +111,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       jobsTableBody.innerHTML = jobs
         .map((j: any) => {
           const time = new Date(j.printed_at).toLocaleTimeString();
-          const orderLabel = j.order_id
-            ? `Order #${j.order_id.slice(0, 8)} (File ${(j.file_index || 0) + 1})`
-            : `${j.job_id.slice(0, 12)}...`;
+          const orderDisplay = j.order_id
+            ? `<span class="badge-order" style="font-family:monospace;font-weight:700;color:#0284c7;background:rgba(2,132,199,0.12);padding:3px 8px;border-radius:6px;border:1px solid rgba(2,132,199,0.25);font-size:12px;">#${j.order_id}${j.file_index ? ' (#' + (j.file_index + 1) + ')' : ''}</span>`
+            : `<span style="color:#64748b;font-size:12px;">—</span>`;
+          const shortJobId = j.job_id ? j.job_id.slice(0, 8) + '...' : '—';
           const statusClass = j.status === 'COMPLETED' ? 'badge-success' : 'badge-error';
           return `
             <tr>
-              <td class="mono" title="Job: ${j.job_id}${j.order_id ? ' | Order: ' + j.order_id : ''}">${orderLabel}</td>
+              <td>${orderDisplay}</td>
+              <td class="mono" title="Job ID: ${j.job_id}">${shortJobId}</td>
               <td><span class="${statusClass}">${j.status}</span></td>
               <td>🛡️ Auto-Purged</td>
               <td>${time}</td>
